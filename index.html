@@ -4,27 +4,49 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>いろ・啼鳥 第一号</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
   <style>
     :root {
       --bg: #000;
       --fg: #fff;
-      --muted: rgba(255, 255, 255, 0.68);
-      --panel: rgba(0, 0, 0, 0.62);
-      --line: rgba(255, 255, 255, 0.22);
+      --muted: rgba(255, 255, 255, .66);
+      --panel: rgba(0, 0, 0, .68);
+      --line: rgba(255, 255, 255, .24);
+      --button: rgba(255, 255, 255, .10);
+      --button-active: rgba(255, 255, 255, .28);
     }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body {
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
       margin: 0;
       width: 100%;
       height: 100%;
       background: var(--bg);
       color: var(--fg);
-      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Hiragino Sans",
+        "Yu Gothic",
+        "Meiryo",
+        sans-serif;
       overflow: hidden;
       overscroll-behavior: none;
     }
-    body { position: fixed; inset: 0; touch-action: none; }
+
+    body {
+      position: fixed;
+      inset: 0;
+      touch-action: none;
+    }
+
     #viewer {
       position: fixed;
       inset: 0;
@@ -37,6 +59,7 @@
       justify-content: center;
       overflow: hidden;
     }
+
     #spread {
       width: 100%;
       height: 100%;
@@ -49,6 +72,7 @@
       transform-origin: center center;
       will-change: transform;
     }
+
     .page {
       background: #fff;
       display: flex;
@@ -58,8 +82,19 @@
       flex: 0 0 auto;
       box-shadow: none;
     }
-    .page.empty { width: 0 !important; height: 0 !important; background: transparent; }
-    canvas { display: block; width: 100%; height: auto; }
+
+    .page.empty {
+      width: 0 !important;
+      height: 0 !important;
+      background: transparent;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
     #controls {
       position: fixed;
       left: 50%;
@@ -77,10 +112,11 @@
       color: #fff;
       max-width: calc(100vw - 12px);
     }
+
     button {
       appearance: none;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--button);
       color: #fff;
       border-radius: 999px;
       height: 34px;
@@ -89,29 +125,104 @@
       font-size: 13px;
       line-height: 1;
       cursor: pointer;
+      white-space: nowrap;
     }
-    button:disabled { opacity: 0.25; cursor: default; }
+
+    button:disabled {
+      opacity: .25;
+      cursor: default;
+    }
+
+    button.active {
+      background: var(--button-active);
+      font-weight: 700;
+    }
+
     #pageInfo {
-      min-width: 78px;
+      min-width: 80px;
       text-align: center;
       color: var(--muted);
       font-size: 13px;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
+
     .tap-zone {
       position: fixed;
       top: 0;
-      bottom: 0;
+      bottom: 70px;
       z-index: 10;
-      width: 30vw;
+      width: 28vw;
       border: 0;
       background: transparent;
       padding: 0;
       opacity: 0;
     }
+
     #nextZone { left: 0; }
     #prevZone { right: 0; }
+
+    #jumpPanel {
+      position: fixed;
+      left: 50%;
+      bottom: calc(58px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 21;
+      width: min(560px, calc(100vw - 20px));
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      display: none;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #jumpPanel.open {
+      display: flex;
+    }
+
+    #pageSlider {
+      flex: 1;
+      min-width: 120px;
+      accent-color: #fff;
+    }
+
+    #pageInput {
+      width: 72px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.10);
+      color: #fff;
+      text-align: center;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(108px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 22;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.15);
+      backdrop-filter: blur(12px);
+      color: #fff;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .16s ease;
+      white-space: nowrap;
+    }
+
+    #toast.show {
+      opacity: 1;
+    }
+
     #status {
       position: fixed;
       inset: 0;
@@ -124,18 +235,70 @@
       background: #000;
       z-index: 30;
     }
-    #status.error { color: #ffd1d1; }
-    @media (max-width: 820px) {
-      #controls { bottom: calc(6px + env(safe-area-inset-bottom)); gap: 4px; padding: 4px; }
-      button { height: 31px; min-width: 31px; padding: 0 8px; font-size: 12px; }
-      #pageInfo { min-width: 68px; font-size: 12px; }
+
+    #status.error {
+      color: #ffd1d1;
     }
-    @media (max-width: 380px) {
-      button { min-width: 29px; height: 29px; padding: 0 7px; font-size: 11px; }
-      #pageInfo { min-width: 60px; }
+
+    @media (max-width: 820px) {
+      #controls {
+        bottom: calc(6px + env(safe-area-inset-bottom));
+        gap: 4px;
+        padding: 4px;
+      }
+
+      button {
+        height: 31px;
+        min-width: 31px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
+
+      #pageInfo {
+        min-width: 66px;
+        font-size: 12px;
+      }
+
+      .tap-zone {
+        bottom: 62px;
+        width: 24vw;
+      }
+
+      #jumpPanel {
+        bottom: calc(52px + env(safe-area-inset-bottom));
+        padding: 10px;
+      }
+
+      #pageInput {
+        width: 62px;
+        height: 31px;
+        font-size: 13px;
+      }
+
+      #toast {
+        bottom: calc(100px + env(safe-area-inset-bottom));
+        font-size: 12px;
+      }
+    }
+
+    @media (max-width: 430px) {
+      #pageInfo { min-width: 58px; }
+      #zoomOutBtn,
+      #zoomInBtn {
+        display: none;
+      }
+      button {
+        min-width: 29px;
+        height: 29px;
+        padding: 0 7px;
+      }
+      #controls {
+        gap: 3px;
+      }
     }
   </style>
 </head>
+
 <body>
   <div id="viewer" aria-label="PDF viewer">
     <div id="spread">
@@ -143,19 +306,36 @@
       <div class="page" id="rightPage"></div>
     </div>
   </div>
+
   <button class="tap-zone" id="nextZone" aria-label="次へ"></button>
   <button class="tap-zone" id="prevZone" aria-label="前へ"></button>
+
+  <div id="jumpPanel">
+    <input id="pageSlider" type="range" min="1" max="1" value="1" />
+    <input id="pageInput" type="number" min="1" max="1" value="1" inputmode="numeric" />
+    <button id="goPageBtn">移動</button>
+  </div>
+
   <div id="controls">
     <button id="nextBtn" aria-label="次へ">←</button>
     <span id="pageInfo">...</span>
     <button id="prevBtn" aria-label="前へ">→</button>
+    <button id="singleBtn" aria-label="単一ページ">1</button>
+    <button id="spreadBtn" aria-label="見開きページ">2</button>
+    <button id="jumpBtn" aria-label="ページ移動">移動</button>
+    <button id="bookmarkBtn" aria-label="しおり">栞</button>
     <button id="zoomOutBtn" aria-label="縮小">−</button>
     <button id="zoomResetBtn" aria-label="ズームを戻す">100%</button>
     <button id="zoomInBtn" aria-label="拡大">＋</button>
   </div>
+
+  <div id="toast"></div>
   <div id="status">読み込み中...</div>
+
   <script>
     const PDF_URL = './issue01.pdf';
+    const STORAGE_KEY = 'iro_teityo_1_bookmark_v2';
+
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
@@ -165,59 +345,149 @@
     const leftPageEl = document.getElementById('leftPage');
     const rightPageEl = document.getElementById('rightPage');
     const pageInfoEl = document.getElementById('pageInfo');
+
     const nextBtn = document.getElementById('nextBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextZone = document.getElementById('nextZone');
     const prevZone = document.getElementById('prevZone');
+
+    const singleBtn = document.getElementById('singleBtn');
+    const spreadBtn = document.getElementById('spreadBtn');
+    const jumpBtn = document.getElementById('jumpBtn');
+    const bookmarkBtn = document.getElementById('bookmarkBtn');
+
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const zoomResetBtn = document.getElementById('zoomResetBtn');
     const zoomInBtn = document.getElementById('zoomInBtn');
 
+    const jumpPanel = document.getElementById('jumpPanel');
+    const pageSlider = document.getElementById('pageSlider');
+    const pageInput = document.getElementById('pageInput');
+    const goPageBtn = document.getElementById('goPageBtn');
+
+    const toastEl = document.getElementById('toast');
+
     let pdfDoc = null;
     let totalPages = 0;
     let currentPage = 1;
+    let viewMode = window.innerWidth <= 820 ? 'single' : 'spread';
+
     let zoom = 1;
     let panX = 0;
     let panY = 0;
+
     let rendering = false;
     let rerenderQueued = false;
+    let toastTimer = null;
 
-    function clamp(number, min, max) { return Math.max(min, Math.min(max, number)); }
+    function clamp(number, min, max) {
+      return Math.max(min, Math.min(max, number));
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      toastEl.textContent = message;
+      toastEl.classList.add('show');
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, 1400);
+    }
 
     function normalizePage(page) {
       page = clamp(page, 1, totalPages);
-      if (page === 1) return 1;
+
+      if (viewMode === 'single') {
+        return page;
+      }
+
+      if (page === 1) {
+        return 1;
+      }
+
       return page % 2 === 0 ? page : page - 1;
     }
 
     function visiblePages() {
-      if (currentPage === 1) return [1];
-      if (currentPage + 1 <= totalPages) return [currentPage + 1, currentPage];
+      if (viewMode === 'single') {
+        return [currentPage];
+      }
+
+      if (currentPage === 1) {
+        return [1];
+      }
+
+      if (currentPage + 1 <= totalPages) {
+        return [currentPage + 1, currentPage];
+      }
+
       return [currentPage];
     }
 
     function lastStartPage() {
-      if (totalPages <= 1) return 1;
+      if (viewMode === 'single') {
+        return totalPages;
+      }
+
+      if (totalPages <= 1) {
+        return 1;
+      }
+
       return totalPages % 2 === 0 ? totalPages : totalPages - 1;
+    }
+
+    function getDisplayStartPage() {
+      const pages = visiblePages();
+      if (pages.length === 1) return pages[0];
+      return Math.min(...pages);
     }
 
     function updateUi() {
       const pages = visiblePages();
-      pageInfoEl.textContent = pages.length === 1
-        ? `${pages[0]}/${totalPages}`
-        : `${pages[0]}-${pages[1]}/${totalPages}`;
+
+      if (pages.length === 1) {
+        pageInfoEl.textContent = `${pages[0]}/${totalPages}`;
+      } else {
+        pageInfoEl.textContent = `${pages[0]}-${pages[1]}/${totalPages}`;
+      }
+
       const isLast = currentPage >= lastStartPage();
       const isFirst = currentPage <= 1;
+
       nextBtn.disabled = isLast;
       nextZone.disabled = isLast;
+
       prevBtn.disabled = isFirst;
       prevZone.disabled = isFirst;
+
+      singleBtn.classList.toggle('active', viewMode === 'single');
+      spreadBtn.classList.toggle('active', viewMode === 'spread');
+
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
+
+      pageSlider.max = totalPages || 1;
+      pageInput.max = totalPages || 1;
+
+      const start = getDisplayStartPage();
+      pageSlider.value = start;
+      pageInput.value = start;
     }
 
     function applyTransform() {
       spreadEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
+    }
+
+    function resetPanIfNeeded() {
+      if (zoom <= 1.01) {
+        panX = 0;
+        panY = 0;
+      }
+    }
+
+    function resetViewTransform() {
+      panX = 0;
+      panY = 0;
+      applyTransform();
     }
 
     function clearPage(element) {
@@ -229,52 +499,94 @@
 
     function getRenderScaleLimit() {
       const dpr = window.devicePixelRatio || 1;
-      // スマホ画質優先版。落ちる場合だけ 3.0 を 2.4 に下げてください。
-      if (window.innerWidth <= 900) return Math.min(dpr, 3.0);
+
+      /*
+        スマホ高画質寄り。
+        重くなる場合は 3.4 を 2.8 や 2.6 に下げてください。
+      */
+      if (window.innerWidth <= 900) {
+        return Math.min(dpr, 3.4);
+      }
+
       return Math.min(dpr, 3.0);
     }
 
     async function drawPage(pageNumber, element, maxWidth, maxHeight) {
       element.innerHTML = '';
       element.classList.remove('empty');
+
       const page = await pdfDoc.getPage(pageNumber);
       const baseViewport = page.getViewport({ scale: 1 });
-      const fitScale = Math.min(maxWidth / baseViewport.width, maxHeight / baseViewport.height);
+
+      const fitScale = Math.min(
+        maxWidth / baseViewport.width,
+        maxHeight / baseViewport.height
+      );
+
       const viewport = page.getViewport({ scale: fitScale });
       const renderScale = getRenderScaleLimit();
+
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { alpha: false });
+
       canvas.width = Math.floor(viewport.width * renderScale);
       canvas.height = Math.floor(viewport.height * renderScale);
+
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
+
       element.style.width = `${Math.floor(viewport.width)}px`;
       element.style.height = `${Math.floor(viewport.height)}px`;
+
       context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = 'high';
+
       element.appendChild(canvas);
-      await page.render({ canvasContext: context, viewport }).promise;
+
+      await page.render({
+        canvasContext: context,
+        viewport
+      }).promise;
     }
 
     async function render() {
       if (!pdfDoc) return;
-      if (rendering) { rerenderQueued = true; return; }
+
+      if (rendering) {
+        rerenderQueued = true;
+        return;
+      }
+
       rendering = true;
       rerenderQueued = false;
+
       currentPage = normalizePage(currentPage);
       updateUi();
-      panX = 0;
-      panY = 0;
-      applyTransform();
+      resetViewTransform();
+
       const pages = visiblePages();
+
       const viewerWidth = viewerEl.clientWidth;
       const viewerHeight = viewerEl.clientHeight;
-      const controlSpace = window.innerWidth <= 900 ? 36 : 46;
+
+      const controlSpace = window.innerWidth <= 900 ? 38 : 48;
       const maxHeight = Math.max(160, viewerHeight - controlSpace);
+
       try {
-        if (pages.length === 1) {
+        if (viewMode === 'single') {
+          /*
+            単一ページは画面いっぱいに近く表示。
+            スマホでは画質と読みやすさを優先。
+          */
+          await drawPage(pages[0], leftPageEl, viewerWidth, maxHeight);
+          clearPage(rightPageEl);
+        } else if (pages.length === 1) {
+          /*
+            見開きモードの単独ページは、他のページ1枚分と同じ大きさ。
+          */
           const singlePageWidth = viewerWidth / 2;
+
           if (pages[0] === 1) {
             clearPage(leftPageEl);
             await drawPage(pages[0], rightPageEl, singlePageWidth, maxHeight);
@@ -283,35 +595,100 @@
             clearPage(rightPageEl);
           }
         } else {
+          /*
+            見開きは 3-2, 5-4 の順。
+          */
           const maxPageWidth = viewerWidth / 2;
+
           await drawPage(pages[0], leftPageEl, maxPageWidth, maxHeight);
           await drawPage(pages[1], rightPageEl, maxPageWidth, maxHeight);
         }
+
         statusEl.style.display = 'none';
       } catch (error) {
-        if (String(error?.name) !== 'RenderingCancelledException') showError(error);
+        if (String(error?.name) !== 'RenderingCancelledException') {
+          showError(error);
+        }
       }
+
       rendering = false;
+
       if (rerenderQueued) render();
     }
 
     function next() {
       if (currentPage >= lastStartPage()) return;
-      currentPage = currentPage === 1 ? 2 : currentPage + 2;
+
+      if (viewMode === 'single') {
+        currentPage += 1;
+      } else {
+        currentPage = currentPage === 1 ? 2 : currentPage + 2;
+      }
+
       render();
     }
 
     function prev() {
       if (currentPage <= 1) return;
-      currentPage = currentPage <= 2 ? 1 : currentPage - 2;
+
+      if (viewMode === 'single') {
+        currentPage -= 1;
+      } else {
+        currentPage = currentPage <= 2 ? 1 : currentPage - 2;
+      }
+
+      render();
+    }
+
+    function setViewMode(mode) {
+      const oldStart = getDisplayStartPage();
+      viewMode = mode;
+      currentPage = normalizePage(oldStart);
+      render();
+    }
+
+    function goToPage(pageNumber) {
+      currentPage = normalizePage(Number(pageNumber) || 1);
+      jumpPanel.classList.remove('open');
       render();
     }
 
     function setZoom(value) {
-      zoom = clamp(value, 1, 3.2);
-      if (zoom <= 1.01) { panX = 0; panY = 0; }
+      zoom = clamp(value, 1, 3.8);
+      resetPanIfNeeded();
       updateUi();
       applyTransform();
+    }
+
+    function saveBookmark() {
+      const data = {
+        page: getDisplayStartPage(),
+        mode: viewMode,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      showToast(`${data.page}ページに栞をはさみました`);
+    }
+
+    function loadBookmark() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          showToast('栞はまだありません');
+          return;
+        }
+
+        const data = JSON.parse(raw);
+        if (data.mode === 'single' || data.mode === 'spread') {
+          viewMode = data.mode;
+        }
+
+        currentPage = normalizePage(data.page || 1);
+        showToast(`${data.page}ページへ移動しました`);
+        render();
+      } catch (error) {
+        showToast('栞を読み込めませんでした');
+      }
     }
 
     function showError(error) {
@@ -324,26 +701,95 @@
     }
 
     nextBtn.addEventListener('click', next);
-    nextZone.addEventListener('click', () => { if (zoom <= 1.01) next(); });
+    nextZone.addEventListener('click', next);
+
     prevBtn.addEventListener('click', prev);
-    prevZone.addEventListener('click', () => { if (zoom <= 1.01) prev(); });
+    prevZone.addEventListener('click', prev);
+
+    singleBtn.addEventListener('click', () => setViewMode('single'));
+    spreadBtn.addEventListener('click', () => setViewMode('spread'));
+
+    jumpBtn.addEventListener('click', () => {
+      jumpPanel.classList.toggle('open');
+    });
+
+    pageSlider.addEventListener('input', () => {
+      pageInput.value = pageSlider.value;
+    });
+
+    pageSlider.addEventListener('change', () => {
+      goToPage(pageSlider.value);
+    });
+
+    pageInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        goToPage(pageInput.value);
+      }
+    });
+
+    goPageBtn.addEventListener('click', () => {
+      goToPage(pageInput.value);
+    });
+
+    bookmarkBtn.addEventListener('click', () => {
+      /*
+        普通クリック：栞を保存
+        長押し/右クリックの代わりに、ダブルクリックで栞へ移動
+      */
+      saveBookmark();
+    });
+
+    bookmarkBtn.addEventListener('dblclick', () => {
+      loadBookmark();
+    });
+
     zoomOutBtn.addEventListener('click', () => setZoom(zoom - 0.15));
     zoomInBtn.addEventListener('click', () => setZoom(zoom + 0.15));
-    zoomResetBtn.addEventListener('click', () => { zoom = 1; panX = 0; panY = 0; updateUi(); applyTransform(); });
+
+    zoomResetBtn.addEventListener('click', () => {
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateUi();
+      applyTransform();
+    });
 
     window.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowLeft') next();
       if (event.key === 'ArrowRight') prev();
+
       if (event.key === '+') setZoom(zoom + 0.15);
       if (event.key === '-') setZoom(zoom - 0.15);
+
+      if (event.key.toLowerCase() === 'j') {
+        jumpPanel.classList.toggle('open');
+      }
+
+      if (event.key.toLowerCase() === 'b') {
+        saveBookmark();
+      }
+
+      if (event.key.toLowerCase() === 'g') {
+        loadBookmark();
+      }
     });
 
+    /*
+      スマホ操作
+      - 1本指左右スワイプ：ページ移動
+      - 拡大中の1本指ドラッグ：位置移動
+      - 2本指ピンチ：拡大縮小
+      - 栞ボタン：保存
+      - 栞ボタンをダブルタップ：栞へ移動
+    */
     let touchStartX = 0;
     let touchStartY = 0;
     let touchLastX = 0;
     let touchLastY = 0;
+
     let isDragging = false;
     let didDrag = false;
+
     let pinchStartDistance = 0;
     let pinchStartZoom = 1;
 
@@ -361,11 +807,14 @@
         didDrag = true;
         return;
       }
+
       const touch = event.changedTouches[0];
+
       touchStartX = touch.clientX;
       touchStartY = touch.clientY;
       touchLastX = touch.clientX;
       touchLastY = touch.clientY;
+
       isDragging = zoom > 1.01;
       didDrag = false;
     }, { passive: false });
@@ -373,22 +822,32 @@
     window.addEventListener('touchmove', (event) => {
       if (event.touches.length === 2) {
         event.preventDefault();
+
         const distance = getDistance(event.touches[0], event.touches[1]);
+
         if (pinchStartDistance > 0) {
-          zoom = clamp(pinchStartZoom * (distance / pinchStartDistance), 1, 3.2);
-          if (zoom <= 1.01) { panX = 0; panY = 0; }
+          zoom = clamp(pinchStartZoom * (distance / pinchStartDistance), 1, 3.8);
+          resetPanIfNeeded();
           updateUi();
           applyTransform();
         }
+
         return;
       }
+
       if (event.touches.length === 1 && isDragging) {
         event.preventDefault();
+
         const touch = event.touches[0];
-        panX += touch.clientX - touchLastX;
-        panY += touch.clientY - touchLastY;
+        const dx = touch.clientX - touchLastX;
+        const dy = touch.clientY - touchLastY;
+
+        panX += dx;
+        panY += dy;
+
         touchLastX = touch.clientX;
         touchLastY = touch.clientY;
+
         didDrag = true;
         applyTransform();
       }
@@ -396,20 +855,30 @@
 
     window.addEventListener('touchend', (event) => {
       if (event.touches.length > 0) return;
+
       if (didDrag && zoom > 1.01) return;
+
       const touch = event.changedTouches[0];
       const diffX = touch.clientX - touchStartX;
       const diffY = touch.clientY - touchStartY;
+
       if (Math.abs(diffX) < 45) return;
       if (Math.abs(diffY) > 90) return;
+
       if (diffX < 0) next();
       else prev();
     }, { passive: false });
 
     let resizeTimer = null;
+
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => { panX = 0; panY = 0; render(); }, 150);
+
+      resizeTimer = setTimeout(() => {
+        panX = 0;
+        panY = 0;
+        render();
+      }, 150);
     });
 
     async function init() {
@@ -420,9 +889,12 @@
           disableStream: false,
           disableRange: false
         });
+
         pdfDoc = await loadingTask.promise;
         totalPages = pdfDoc.numPages;
         currentPage = 1;
+
+        updateUi();
         render();
       } catch (error) {
         showError(error);
