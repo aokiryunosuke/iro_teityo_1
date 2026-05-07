@@ -66,7 +66,9 @@
       align-items: center;
       justify-content: center;
       gap: 0;
-      overflow: hidden;
+      overflow: visible;
+      transform-origin: center center;
+      will-change: transform;
     }
 
     .page {
@@ -142,18 +144,13 @@
       top: 0;
       bottom: 0;
       z-index: 10;
-      width: 32vw;
+      width: 30vw;
       border: 0;
       background: transparent;
       padding: 0;
       opacity: 0;
     }
 
-    /*
-      日本語の右開き本として：
-      左側タップ = 次へ
-      右側タップ = 前へ
-    */
     #nextZone {
       left: 0;
     }
@@ -199,20 +196,16 @@
       }
     }
 
-    @media (max-width: 420px) {
-      #zoomOutBtn,
-      #zoomInBtn {
-        display: none;
-      }
-
-      #controls {
-        gap: 3px;
-      }
-
+    @media (max-width: 380px) {
       button {
-        min-width: 30px;
-        height: 30px;
+        min-width: 29px;
+        height: 29px;
         padding: 0 7px;
+        font-size: 11px;
+      }
+
+      #pageInfo {
+        min-width: 60px;
       }
     }
   </style>
@@ -241,16 +234,6 @@
   <div id="status">読み込み中...</div>
 
   <script>
-    /*
-      GitHub上で以下のように置いてください。
-
-      iro_teityo_1/
-      ├── index.html
-      ├── issue01.pdf
-      └── README.md
-
-      issue01.pdf は index.html と同じ階層です。
-    */
     const PDF_URL = './issue01.pdf';
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -258,6 +241,7 @@
 
     const statusEl = document.getElementById('status');
     const viewerEl = document.getElementById('viewer');
+    const spreadEl = document.getElementById('spread');
     const leftPageEl = document.getElementById('leftPage');
     const rightPageEl = document.getElementById('rightPage');
     const pageInfoEl = document.getElementById('pageInfo');
@@ -273,28 +257,19 @@
 
     let pdfDoc = null;
     let totalPages = 0;
-
-    /*
-      currentPage は見開きの基準ページです。
-
-      1      → 1ページ目単独、右側に表示
-      2      → 3-2
-      4      → 5-4
-      6      → 7-6
-      ...
-      100    → 100ページ目単独、左側に表示
-    */
     let currentPage = 1;
 
     /*
-      片ページモードは使いません。
-      スマホでもPCでも常に見開きです。
+      表示用ズーム。
+      PDFを再描画するのではなく、表示全体を拡大します。
+      スマホでも軽く動きやすく、ピンチ拡大に向いています。
     */
-    let zoom = window.innerWidth <= 900 ? 1.04 : 1;
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
 
     let rendering = false;
     let rerenderQueued = false;
-    let currentRenderTask = null;
 
     function clamp(number, min, max) {
       return Math.max(min, Math.min(max, number));
@@ -307,11 +282,6 @@
         return 1;
       }
 
-      /*
-        2ページ以降は偶数ページを見開きの基準にする。
-        2 → 3-2
-        4 → 5-4
-      */
       return page % 2 === 0 ? page : page - 1;
     }
 
@@ -321,20 +291,9 @@
       }
 
       if (currentPage + 1 <= totalPages) {
-        /*
-          表示順を右開き本に合わせる。
-          左ページ、右ページの順で返す。
-
-          currentPage = 2 → [3, 2]
-          currentPage = 4 → [5, 4]
-        */
         return [currentPage + 1, currentPage];
       }
 
-      /*
-        最終ページが単独になる場合。
-        今回は100ページなので、100ページ目は単独で左側。
-      */
       return [currentPage];
     }
 
@@ -343,10 +302,6 @@
         return 1;
       }
 
-      /*
-        100ページのような偶数ページ数の場合、最後は100単独。
-        99ページのような奇数ページ数の場合、最後の見開きは99-98。
-      */
       return totalPages % 2 === 0 ? totalPages : totalPages - 1;
     }
 
@@ -371,6 +326,18 @@
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
     }
 
+    function applyTransform() {
+      spreadEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+      zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
+    }
+
+    function resetPanIfNeeded() {
+      if (zoom <= 1.01) {
+        panX = 0;
+        panY = 0;
+      }
+    }
+
     function clearPage(element) {
       element.innerHTML = '';
       element.classList.add('empty');
@@ -378,19 +345,24 @@
       element.style.height = '0px';
     }
 
-    function getDeviceScale() {
+    function getRenderScaleLimit() {
       const dpr = window.devicePixelRatio || 1;
 
       /*
-        スマホで落ちにくくしつつ、5MB版PDFでもなるべく読めるようにする。
-        重い場合は 1.6 → 1.4 に下げる。
-        もっと画質が欲しい場合は 1.6 → 1.8 に上げる。
+        画質を上げる部分。
+        前よりスマホの上限を上げています。
+
+        もしスマホでまた落ちる場合：
+        2.4 を 2.0 に下げてください。
+
+        もっと画質を上げたい場合：
+        2.4 を 2.8 に上げられますが、重くなります。
       */
       if (window.innerWidth <= 900) {
-        return Math.min(dpr, 1.6);
+        return Math.min(dpr, 2.4);
       }
 
-      return Math.min(dpr, 2);
+      return Math.min(dpr, 2.6);
     }
 
     async function drawPage(pageNumber, element, maxWidth, maxHeight) {
@@ -400,25 +372,22 @@
       const page = await pdfDoc.getPage(pageNumber);
       const baseViewport = page.getViewport({ scale: 1 });
 
-      /*
-        PDF元ページの比率を保ったまま、画面内に最大表示。
-      */
       const fitScale = Math.min(
         maxWidth / baseViewport.width,
         maxHeight / baseViewport.height
       );
 
       const viewport = page.getViewport({
-        scale: fitScale * zoom
+        scale: fitScale
       });
 
-      const dpr = getDeviceScale();
+      const renderScale = getRenderScaleLimit();
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { alpha: false });
 
-      canvas.width = Math.floor(viewport.width * dpr);
-      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.width = Math.floor(viewport.width * renderScale);
+      canvas.height = Math.floor(viewport.height * renderScale);
 
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
@@ -426,24 +395,16 @@
       element.style.width = `${Math.floor(viewport.width)}px`;
       element.style.height = `${Math.floor(viewport.height)}px`;
 
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.setTransform(renderScale, 0, 0, renderScale, 0, 0);
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = 'high';
 
       element.appendChild(canvas);
 
-      const renderTask = page.render({
+      await page.render({
         canvasContext: context,
         viewport
-      });
-
-      currentRenderTask = renderTask;
-
-      await renderTask.promise;
-
-      if (currentRenderTask === renderTask) {
-        currentRenderTask = null;
-      }
+      }).promise;
     }
 
     async function render() {
@@ -462,45 +423,37 @@
       currentPage = normalizePage(currentPage);
       updateUi();
 
+      /*
+        ページ移動したら拡大位置だけ戻す。
+        ズーム倍率は維持します。
+      */
+      panX = 0;
+      panY = 0;
+      applyTransform();
+
       const pages = visiblePages();
 
       const viewerWidth = viewerEl.clientWidth;
       const viewerHeight = viewerEl.clientHeight;
 
       /*
-        下の操作バーのぶんだけ少し高さを空ける。
-        ページをなるべく大きく見せたいので、控えめにする。
+        操作バーぶんだけ高さを少し空ける。
       */
-      const controlSpace = window.innerWidth <= 900 ? 38 : 48;
+      const controlSpace = window.innerWidth <= 900 ? 36 : 46;
       const maxHeight = Math.max(160, viewerHeight - controlSpace);
 
       try {
         if (pages.length === 1) {
-          /*
-            単独ページも、見開き中の1ページと同じ大きさにする。
-            つまり全幅ではなく、画面の半分幅を上限にする。
-          */
           const singlePageWidth = viewerWidth / 2;
 
           if (pages[0] === 1) {
-            /*
-              1ページ目は右側に置く。
-            */
             clearPage(leftPageEl);
             await drawPage(pages[0], rightPageEl, singlePageWidth, maxHeight);
           } else {
-            /*
-              100ページ目など、最後の単独ページは左側に置く。
-            */
             await drawPage(pages[0], leftPageEl, singlePageWidth, maxHeight);
             clearPage(rightPageEl);
           }
         } else {
-          /*
-            見開き。
-            pages は [3,2], [5,4] のように
-            左ページ、右ページの順。
-          */
           const maxPageWidth = viewerWidth / 2;
 
           await drawPage(pages[0], leftPageEl, maxPageWidth, maxHeight);
@@ -550,8 +503,10 @@
     }
 
     function setZoom(value) {
-      zoom = clamp(value, 0.7, 2.4);
-      render();
+      zoom = clamp(value, 1, 3.2);
+      resetPanIfNeeded();
+      updateUi();
+      applyTransform();
     }
 
     function showError(error) {
@@ -570,22 +525,21 @@
     prevZone.addEventListener('click', prev);
 
     zoomOutBtn.addEventListener('click', () => {
-      setZoom(zoom - 0.1);
+      setZoom(zoom - 0.15);
     });
 
     zoomInBtn.addEventListener('click', () => {
-      setZoom(zoom + 0.1);
+      setZoom(zoom + 0.15);
     });
 
     zoomResetBtn.addEventListener('click', () => {
-      zoom = window.innerWidth <= 900 ? 1.04 : 1;
-      render();
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      updateUi();
+      applyTransform();
     });
 
-    /*
-      キーボード操作：
-      日本語の右開き本なので、← で次へ、→ で前へ。
-    */
     window.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowLeft') {
         next();
@@ -594,24 +548,105 @@
       if (event.key === 'ArrowRight') {
         prev();
       }
+
+      if (event.key === '+') {
+        setZoom(zoom + 0.15);
+      }
+
+      if (event.key === '-') {
+        setZoom(zoom - 0.15);
+      }
     });
 
     /*
-      スマホ操作：
-      左へスワイプ = 次へ
-      右へスワイプ = 前へ
+      スマホ操作
+      - 1本指で左右スワイプ：ページ移動
+      - 拡大中は1本指ドラッグ：表示位置を移動
+      - 2本指ピンチ：拡大縮小
     */
     let touchStartX = 0;
     let touchStartY = 0;
+    let touchLastX = 0;
+    let touchLastY = 0;
+
+    let isDragging = false;
+    let didDrag = false;
+
+    let pinchStartDistance = 0;
+    let pinchStartZoom = 1;
+
+    function getDistance(touchA, touchB) {
+      const dx = touchA.clientX - touchB.clientX;
+      const dy = touchA.clientY - touchB.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
 
     window.addEventListener('touchstart', (event) => {
-      touchStartX = event.changedTouches[0].clientX;
-      touchStartY = event.changedTouches[0].clientY;
-    }, { passive: true });
+      if (event.touches.length === 2) {
+        pinchStartDistance = getDistance(event.touches[0], event.touches[1]);
+        pinchStartZoom = zoom;
+        isDragging = false;
+        didDrag = true;
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchLastX = touch.clientX;
+      touchLastY = touch.clientY;
+
+      isDragging = zoom > 1.01;
+      didDrag = false;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (event) => {
+      if (event.touches.length === 2) {
+        event.preventDefault();
+
+        const distance = getDistance(event.touches[0], event.touches[1]);
+
+        if (pinchStartDistance > 0) {
+          zoom = clamp(pinchStartZoom * (distance / pinchStartDistance), 1, 3.2);
+          resetPanIfNeeded();
+          updateUi();
+          applyTransform();
+        }
+
+        return;
+      }
+
+      if (event.touches.length === 1 && isDragging) {
+        event.preventDefault();
+
+        const touch = event.touches[0];
+        const dx = touch.clientX - touchLastX;
+        const dy = touch.clientY - touchLastY;
+
+        panX += dx;
+        panY += dy;
+
+        touchLastX = touch.clientX;
+        touchLastY = touch.clientY;
+
+        didDrag = true;
+        applyTransform();
+      }
+    }, { passive: false });
 
     window.addEventListener('touchend', (event) => {
-      const diffX = event.changedTouches[0].clientX - touchStartX;
-      const diffY = event.changedTouches[0].clientY - touchStartY;
+      if (event.touches.length > 0) {
+        return;
+      }
+
+      if (didDrag && zoom > 1.01) {
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      const diffX = touch.clientX - touchStartX;
+      const diffY = touch.clientY - touchStartY;
 
       if (Math.abs(diffX) < 45) {
         return;
@@ -626,7 +661,7 @@
       } else {
         prev();
       }
-    }, { passive: true });
+    }, { passive: false });
 
     let resizeTimer = null;
 
@@ -634,6 +669,8 @@
       clearTimeout(resizeTimer);
 
       resizeTimer = setTimeout(() => {
+        panX = 0;
+        panY = 0;
         render();
       }, 150);
     });
