@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>いろ・啼鳥 第一号 | Book Viewer</title>
+  <meta name="description" content="いろ・啼鳥 第一号を本のように読むためのPDFビューア" />
+  <style>
+    :root {
+      --paper: #fbfaf6;
+      --paper-2: #f5f1e9;
+      --ink: #191816;
+      --muted: #726e67;
+      --line: rgba(25, 24, 22, .12);
+      --glass: rgba(255,255,255,.82);
+      --dark: #24221f;
+      --accent: #a9874d;
+      --shadow: 0 30px 80px rgba(0,0,0,.28);
+      --side: 250px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+      background:
+        radial-gradient(circle at 50% 10%, rgba(255,255,255,.12), transparent 34%),
+        linear-gradient(120deg, #2d2b28 0%, #191817 58%, #34302b 100%);
+      overflow: hidden;
+    }
+
+    button, input, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 74px 1fr;
+    }
+
+    .topbar {
+      z-index: 30;
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr);
+      align-items: center;
+      gap: 16px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(251,250,246,.92);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 1px 16px rgba(0,0,0,.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .brand__title {
+      font-size: clamp(22px, 2.6vw, 34px);
+      line-height: 1;
+      letter-spacing: .08em;
+      font-weight: 700;
+    }
+    .brand__issue {
+      font-size: 14px;
+      color: var(--muted);
+      letter-spacing: .16em;
+    }
+
+    .page-nav {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      justify-content: center;
+    }
+    .nav-btn, .tool-btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.64);
+      min-width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform .16s ease, background .16s ease, border-color .16s ease;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      user-select: none;
+    }
+    .nav-btn:hover, .tool-btn:hover { transform: translateY(-1px); background: #fff; border-color: rgba(25,24,22,.24); }
+    .nav-btn:disabled, .tool-btn:disabled { opacity: .38; cursor: default; transform: none; }
+    .page-count {
+      min-width: 150px;
+      text-align: center;
+      font-family: ui-serif, Georgia, serif;
+      font-size: 28px;
+      letter-spacing: .02em;
+    }
+    .page-count small { font-size: 15px; color: var(--muted); }
+
+    .tools {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+    }
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.46);
+      border-radius: 999px;
+    }
+    .tool-btn { min-width: 36px; height: 36px; border: none; background: transparent; font-family: system-ui, sans-serif; font-size: 18px; }
+    .zoom-value { min-width: 48px; text-align: center; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; color: var(--muted); }
+
+    .main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: var(--side) 1fr;
+      position: relative;
+    }
+
+    .sidebar {
+      z-index: 20;
+      min-height: 0;
+      border-right: 1px solid rgba(255,255,255,.12);
+      background: rgba(28,27,25,.82);
+      backdrop-filter: blur(14px);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      transition: width .2s ease, transform .2s ease;
+    }
+    .sidebar.is-closed { transform: translateX(calc(-1 * var(--side))); }
+    .side-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+      font-size: 15px;
+      letter-spacing: .08em;
+    }
+    .thumbs {
+      overflow: auto;
+      padding: 14px 14px 90px;
+      display: grid;
+      gap: 14px;
+    }
+    .thumb {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 8px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      cursor: pointer;
+      color: rgba(255,255,255,.86);
+      text-align: left;
+    }
+    .thumb:hover { background: rgba(255,255,255,.09); }
+    .thumb.is-active { border-color: rgba(212,176,112,.92); background: rgba(212,176,112,.14); }
+    .thumb__num { font-family: ui-serif, Georgia, serif; font-size: 18px; color: rgba(255,255,255,.74); padding-top: 4px; }
+    .thumb canvas { width: 100%; border-radius: 4px; background: #fff; box-shadow: 0 5px 20px rgba(0,0,0,.22); }
+
+    .stage-wrap {
+      min-width: 0;
+      min-height: 0;
+      position: relative;
+      display: grid;
+      place-items: center;
+      padding: clamp(18px, 2vw, 34px);
+      overflow: auto;
+    }
+    .stage-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px);
+      background-size: 42px 42px;
+      opacity: .2;
+      pointer-events: none;
+    }
+
+    .book-shell {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: min(1120px, 92vw);
+      transform-origin: center center;
+    }
+    .book {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      background: linear-gradient(90deg, #e7dfd3, var(--paper) 5%, var(--paper) 50%, #eee7dd 50%, var(--paper) 55%, var(--paper) 95%, #e4ddd2);
+      border-radius: 5px 8px 8px 5px;
+      box-shadow: var(--shadow), 0 2px 1px rgba(255,255,255,.35) inset;
+      overflow: hidden;
+      transform: translateZ(0);
+    }
+    .book::before {
+      content: "";
+      position: absolute;
+      left: 50%; top: 0; bottom: 0;
+      width: 30px;
+      transform: translateX(-50%);
+      background: linear-gradient(90deg, rgba(0,0,0,.08), rgba(255,255,255,.04) 40%, rgba(0,0,0,.16) 52%, rgba(255,255,255,.07) 72%, rgba(0,0,0,.07));
+      pointer-events: none;
+      z-index: 5;
+    }
+    .page {
+      position: relative;
+      min-height: 72vh;
+      background: var(--paper);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .page.left { box-shadow: inset -18px 0 34px rgba(0,0,0,.08); }
+    .page.right { box-shadow: inset 18px 0 34px rgba(0,0,0,.06); }
+    .page::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(0,0,0,.035), transparent 1px),
+        radial-gradient(circle at 70% 90%, rgba(0,0,0,.025), transparent 1px);
+      background-size: 7px 7px, 11px 11px;
+      opacity: .45;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+    }
+    .page canvas {
+      display: block;
+      max-width: 94%;
+      max-height: 70vh;
+      width: auto;
+      height: auto;
+      background: #fff;
+      box-shadow: 0 1px 0 rgba(0,0,0,.03);
+      z-index: 1;
+    }
+    .page .blank {
+      color: rgba(25,24,22,.28);
+      letter-spacing: .2em;
+      writing-mode: vertical-rl;
+      font-size: 14px;
+    }
+
+    .edge-btn {
+      position: fixed;
+      top: calc(50% + 36px);
+      translate: 0 -50%;
+      z-index: 15;
+      width: 62px;
+      height: 92px;
+      border: 0;
+      color: rgba(255,255,255,.88);
+      background: rgba(255,255,255,.05);
+      font-size: 54px;
+      border-radius: 999px;
+      cursor: pointer;
+      text-shadow: 0 2px 16px rgba(0,0,0,.55);
+    }
+    .edge-btn:hover { background: rgba(255,255,255,.12); }
+    .edge-btn.prev { left: calc(var(--side) + 20px); }
+    .edge-btn.next { right: 24px; }
+
+    .bottom-nav {
+      position: fixed;
+      left: calc(var(--side) + 50%);
+      bottom: 24px;
+      translate: -50% 0;
+      z-index: 22;
+      display: flex;
+      gap: 2px;
+      padding: 8px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(36,34,31,.76);
+      color: #fff;
+      backdrop-filter: blur(14px);
+      border-radius: 18px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.3);
+    }
+    .bottom-nav button {
+      min-width: 112px;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: rgba(255,255,255,.86);
+      background: transparent;
+      cursor: pointer;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+    }
+    .bottom-nav button:hover { background: rgba(255,255,255,.10); color: #fff; }
+    .bottom-nav button:disabled { opacity: .4; cursor: default; }
+
+    .mobile-tabs { display: none; }
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 50;
+      max-width: 360px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      color: #fff;
+      background: rgba(25,24,22,.9);
+      box-shadow: 0 18px 40px rgba(0,0,0,.3);
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      display: none;
+    }
+
+    @media (max-width: 880px) {
+      body { overflow: auto; }
+      .app { min-height: 100vh; height: auto; grid-template-rows: auto 1fr; }
+      .topbar { grid-template-columns: 1fr; gap: 10px; padding: 12px; position: sticky; top: 0; }
+      .brand { justify-content: center; }
+      .tools { justify-content: center; flex-wrap: wrap; }
+      .main { grid-template-columns: 1fr; }
+      .sidebar { position: fixed; inset: 0 auto 0 0; width: min(82vw, var(--side)); transform: translateX(-100%); }
+      .sidebar.is-open { transform: translateX(0); }
+      .stage-wrap { padding: 12px 12px 110px; overflow: visible; }
+      .book-shell { width: min(94vw, 560px); }
+      .book { grid-template-columns: 1fr; }
+      .page { min-height: auto; padding: 12px 0; box-shadow: none !important; }
+      .page.left { display: none; }
+      .book::before { display: none; }
+      .page canvas { max-width: 94%; max-height: none; }
+      .edge-btn { display: none; }
+      .bottom-nav { left: 50%; width: calc(100vw - 24px); justify-content: space-around; overflow-x: auto; bottom: 12px; }
+      .bottom-nav button { min-width: 86px; padding: 10px 8px; }
+      .mobile-tabs { display: inline-flex; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand" aria-label="site title">
+        <div class="brand__title">いろ・啼鳥</div>
+        <div class="brand__issue">第一号</div>
+      </div>
+
+      <div class="page-nav">
+        <button class="nav-btn" id="prevTop" aria-label="前のページ">‹</button>
+        <div class="page-count"><span id="pageNow">-</span> <small>/ <span id="pageTotal">-</span></small></div>
+        <button class="nav-btn" id="nextTop" aria-label="次のページ">›</button>
+      </div>
+
+      <div class="tools">
+        <button class="tool-btn mobile-tabs" id="openSide" aria-label="目次を開く">☰</button>
+        <div class="tool-group" aria-label="zoom controls">
+          <button class="tool-btn" id="zoomOut" aria-label="縮小">−</button>
+          <div class="zoom-value" id="zoomValue">100%</div>
+          <button class="tool-btn" id="zoomIn" aria-label="拡大">＋</button>
+        </div>
+        <button class="tool-btn" id="fitBtn" title="画面に合わせる">⌁</button>
+        <button class="tool-btn" id="fullBtn" title="全画面">⛶</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <aside class="sidebar" id="sidebar">
+        <div class="side-head">
+          <span>目次／サムネイル</span>
+          <button class="tool-btn" id="closeSide" aria-label="目次を閉じる" style="color:#fff;">×</button>
+        </div>
+        <div class="thumbs" id="thumbs"></div>
+      </aside>
+
+      <section class="stage-wrap" id="stageWrap">
+        <button class="edge-btn prev" id="prevEdge" aria-label="前へ">‹</button>
+        <div class="book-shell" id="bookShell">
+          <div class="book" id="book">
+            <article class="page left" id="leftPage"><canvas id="leftCanvas"></canvas></article>
+            <article class="page right" id="rightPage"><canvas id="rightCanvas"></canvas></article>
+          </div>
+        </div>
+        <button class="edge-btn next" id="nextEdge" aria-label="次へ">›</button>
+      </section>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="page navigation">
+    <button id="firstBtn">≪ 最初へ</button>
+    <button id="prevBtn">‹ 前のページ</button>
+    <button id="toggleSide">▦ 一覧</button>
+    <button id="nextBtn">次のページ ›</button>
+    <button id="lastBtn">最後へ ≫</button>
+  </nav>
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+
+    const PDF_URL = './pdf/issue01.pdf';
+
+    const state = {
+      pdf: null,
+      total: 0,
+      page: 1,
+      zoom: 1,
+      renderToken: 0,
+      isMobile: () => window.matchMedia('(max-width: 880px)').matches,
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const els = {
+      leftCanvas: $('leftCanvas'), rightCanvas: $('rightCanvas'),
+      leftPage: $('leftPage'), rightPage: $('rightPage'),
+      pageNow: $('pageNow'), pageTotal: $('pageTotal'), zoomValue: $('zoomValue'),
+      thumbs: $('thumbs'), sidebar: $('sidebar'), bookShell: $('bookShell'),
+      buttons: ['prevTop','nextTop','prevEdge','nextEdge','firstBtn','prevBtn','nextBtn','lastBtn'].map($),
+      toast: $('toast')
+    };
+
+    function toast(message) {
+      els.toast.textContent = message;
+      els.toast.style.display = 'block';
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => els.toast.style.display = 'none', 2600);
+    }
+
+    function clampPage(n) {
+      return Math.max(1, Math.min(state.total || 1, n));
+    }
+
+    function spreadPages() {
+      // 日本語の本っぽく、右ページが先、左ページが次。スマホでは右ページのみ表示。
+      const right = clampPage(state.page);
+      const left = right < state.total ? right + 1 : null;
+      return { left, right };
+    }
+
+    async function renderPage(num, canvas, token, scaleMultiplier = 1) {
+      const page = await state.pdf.getPage(num);
+      if (token !== state.renderToken) return;
+      const viewport = page.getViewport({ scale: state.zoom * scaleMultiplier });
+      const dpr = window.devicePixelRatio || 1;
+      const context = canvas.getContext('2d', { alpha: false });
+      canvas.width = Math.floor(viewport.width * dpr);
+      canvas.height = Math.floor(viewport.height * dpr);
+      canvas.style.width = `${Math.floor(viewport.width)}px`;
+      canvas.style.height = `${Math.floor(viewport.height)}px`;
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      await page.render({ canvasContext: context, viewport }).promise;
+    }
+
+    function clearPage(pageEl, canvas, text = 'blank') {
+      canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = 'none';
+      if (!pageEl.querySelector('.blank')) {
+        const div = document.createElement('div');
+        div.className = 'blank';
+        pageEl.appendChild(div);
+      }
+      pageEl.querySelector('.blank').textContent = text;
+    }
+
+    function showCanvas(pageEl, canvas) {
+      canvas.style.display = 'block';
+      pageEl.querySelector('.blank')?.remove();
+    }
+
+    async function renderSpread() {
+      if (!state.pdf) return;
+      const token = ++state.renderToken;
+      const { left, right } = spreadPages();
+      els.pageNow.textContent = state.isMobile() ? right : (left ? `${left}-${right}` : right);
+      els.pageTotal.textContent = state.total;
+      els.zoomValue.textContent = `${Math.round(state.zoom * 100)}%`;
+
+      updateButtons();
+      highlightThumbs();
+
+      showCanvas(els.rightPage, els.rightCanvas);
+      const mobile = state.isMobile();
+      const fitScale = calculateFitScale();
+      await renderPage(right, els.rightCanvas, token, fitScale);
+
+      if (!mobile && left) {
+        showCanvas(els.leftPage, els.leftCanvas);
+        await renderPage(left, els.leftCanvas, token, fitScale);
+      } else if (!mobile) {
+        clearPage(els.leftPage, els.leftCanvas, '余白');
+      }
+    }
+
+    function calculateFitScale() {
+      // PDFは縦長。大きすぎないよう、画面に合わせた基準倍率を軽く計算。
+      const wrap = $('stageWrap');
+      const availableH = Math.max(420, wrap.clientHeight - 150);
+      const basePageHeightAtScale1 = 594; // PDF.js scale=1 のおおよその高さ(pt)
+      return Math.min(1.32, Math.max(.62, availableH / basePageHeightAtScale1));
+    }
+
+    function updateButtons() {
+      const atFirst = state.page <= 1;
+      const atLast = state.page >= state.total;
+      ['prevTop','prevEdge','prevBtn','firstBtn'].forEach(id => $(id).disabled = atFirst);
+      ['nextTop','nextEdge','nextBtn','lastBtn'].forEach(id => $(id).disabled = atLast);
+    }
+
+    function stepSize() {
+      return state.isMobile() ? 1 : 2;
+    }
+
+    function goTo(page) {
+      state.page = clampPage(page);
+      renderSpread();
+    }
+    function next() { goTo(state.page + stepSize()); }
+    function prev() { goTo(state.page - stepSize()); }
+
+    function setZoom(z) {
+      state.zoom = Math.max(.55, Math.min(2.2, z));
+      renderSpread();
+    }
+
+    async function buildThumbs() {
+      els.thumbs.innerHTML = '';
+      const pages = Array.from({length: state.total}, (_, i) => i + 1);
+      for (const n of pages) {
+        const btn = document.createElement('button');
+        btn.className = 'thumb';
+        btn.type = 'button';
+        btn.dataset.page = n;
+        btn.innerHTML = `<div class="thumb__num">${n}</div><canvas aria-label="page ${n} thumbnail"></canvas>`;
+        btn.addEventListener('click', () => {
+          goTo(n);
+          if (state.isMobile()) els.sidebar.classList.remove('is-open');
+        });
+        els.thumbs.appendChild(btn);
+      }
+
+      // 全ページを一気に描くと重いので、少しずつ描画。
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(async entry => {
+          if (!entry.isIntersecting) return;
+          const btn = entry.target;
+          observer.unobserve(btn);
+          const n = Number(btn.dataset.page);
+          const canvas = btn.querySelector('canvas');
+          try {
+            const page = await state.pdf.getPage(n);
+            const viewport = page.getViewport({ scale: .22 });
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = viewport.width * dpr;
+            canvas.height = viewport.height * dpr;
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.setTransform(dpr,0,0,dpr,0,0);
+            await page.render({ canvasContext: ctx, viewport }).promise;
+          } catch (e) {
+            console.warn('thumbnail render failed', n, e);
+          }
+        });
+      }, { root: els.thumbs, rootMargin: '240px' });
+
+      document.querySelectorAll('.thumb').forEach(el => observer.observe(el));
+      highlightThumbs();
+    }
+
+    function highlightThumbs() {
+      const { left, right } = spreadPages();
+      document.querySelectorAll('.thumb').forEach(el => {
+        const n = Number(el.dataset.page);
+        el.classList.toggle('is-active', n === right || n === left);
+      });
+    }
+
+    function toggleSidebar(force) {
+      const mobile = state.isMobile();
+      if (mobile) {
+        els.sidebar.classList.toggle('is-open', force ?? !els.sidebar.classList.contains('is-open'));
+      } else {
+        els.sidebar.classList.toggle('is-closed', force === false ? true : force === true ? false : !els.sidebar.classList.contains('is-closed'));
+      }
+    }
+
+    async function init() {
+      try {
+        const loadingTask = pdfjsLib.getDocument(PDF_URL);
+        state.pdf = await loadingTask.promise;
+        state.total = state.pdf.numPages;
+        els.pageTotal.textContent = state.total;
+        await buildThumbs();
+        await renderSpread();
+        toast('読み込みました。矢印キーでもページ移動できます。');
+      } catch (err) {
+        console.error(err);
+        toast('PDFを読み込めませんでした。ローカルでは http://localhost で開いてください。');
+      }
+    }
+
+    $('nextTop').addEventListener('click', next);
+    $('nextEdge').addEventListener('click', next);
+    $('nextBtn').addEventListener('click', next);
+    $('prevTop').addEventListener('click', prev);
+    $('prevEdge').addEventListener('click', prev);
+    $('prevBtn').addEventListener('click', prev);
+    $('firstBtn').addEventListener('click', () => goTo(1));
+    $('lastBtn').addEventListener('click', () => goTo(state.total));
+    $('zoomIn').addEventListener('click', () => setZoom(state.zoom + .12));
+    $('zoomOut').addEventListener('click', () => setZoom(state.zoom - .12));
+    $('fitBtn').addEventListener('click', () => { state.zoom = 1; renderSpread(); });
+    $('fullBtn').addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen());
+    $('toggleSide').addEventListener('click', () => toggleSidebar());
+    $('openSide').addEventListener('click', () => toggleSidebar(true));
+    $('closeSide').addEventListener('click', () => toggleSidebar(false));
+
+    window.addEventListener('keydown', (e) => {
+      // 縦書き本の感覚で、右矢印=前、左矢印=次にもできますが、ここでは一般的な操作を優先。
+      if (e.key === 'ArrowRight') next();
+      if (e.key === 'ArrowLeft') prev();
+      if (e.key === '+') setZoom(state.zoom + .12);
+      if (e.key === '-') setZoom(state.zoom - .12);
+    });
+    window.addEventListener('resize', () => renderSpread());
+
+    init();
+  </script>
+</body>
+</html>
