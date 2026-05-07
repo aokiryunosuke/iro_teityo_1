@@ -4,15 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>いろ・啼鳥 第一号</title>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
   <style>
     :root {
       --bg: #000;
       --fg: #fff;
-      --muted: rgba(255, 255, 255, 0.72);
-      --panel: rgba(0, 0, 0, 0.60);
-      --line: rgba(255, 255, 255, 0.18);
+      --muted: rgba(255, 255, 255, 0.68);
+      --panel: rgba(0, 0, 0, 0.62);
+      --line: rgba(255, 255, 255, 0.22);
     }
 
     * {
@@ -61,6 +62,7 @@
       width: 100%;
       height: 100%;
       display: flex;
+      flex-direction: row;
       align-items: center;
       justify-content: center;
       gap: 0;
@@ -122,7 +124,7 @@
     }
 
     button:disabled {
-      opacity: .25;
+      opacity: 0.25;
       cursor: default;
     }
 
@@ -148,11 +150,17 @@
     }
 
     /*
+      日本語の右開き本として：
       左側タップ = 次へ
       右側タップ = 前へ
     */
-    #nextZone { left: 0; }
-    #prevZone { right: 0; }
+    #nextZone {
+      left: 0;
+    }
+
+    #prevZone {
+      right: 0;
+    }
 
     #status {
       position: fixed;
@@ -169,42 +177,6 @@
 
     #status.error {
       color: #ffd1d1;
-    }
-
-    #rotateNotice {
-      position: fixed;
-      inset: 0;
-      z-index: 40;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: #000;
-      padding: 24px;
-      text-align: center;
-    }
-
-    #rotateNotice .inner {
-      max-width: 320px;
-      line-height: 1.9;
-      color: #fff;
-    }
-
-    #rotateNotice .title {
-      font-size: 20px;
-      margin-bottom: 10px;
-      font-weight: 700;
-    }
-
-    #rotateNotice .sub {
-      color: var(--muted);
-      font-size: 14px;
-      margin-bottom: 16px;
-    }
-
-    @media (max-width: 900px) and (orientation: portrait) {
-      #rotateNotice {
-        display: flex;
-      }
     }
 
     @media (max-width: 820px) {
@@ -232,9 +204,20 @@
       #zoomInBtn {
         display: none;
       }
+
+      #controls {
+        gap: 3px;
+      }
+
+      button {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 7px;
+      }
     }
   </style>
 </head>
+
 <body>
   <div id="viewer" aria-label="PDF viewer">
     <div id="spread">
@@ -250,26 +233,24 @@
     <button id="nextBtn" aria-label="次へ">←</button>
     <span id="pageInfo">...</span>
     <button id="prevBtn" aria-label="前へ">→</button>
-    <button id="zoomOutBtn">−</button>
-    <button id="zoomResetBtn">100%</button>
-    <button id="zoomInBtn">＋</button>
-    <button id="fullscreenBtn">全</button>
+    <button id="zoomOutBtn" aria-label="縮小">−</button>
+    <button id="zoomResetBtn" aria-label="ズームを戻す">100%</button>
+    <button id="zoomInBtn" aria-label="拡大">＋</button>
   </div>
 
   <div id="status">読み込み中...</div>
 
-  <div id="rotateNotice">
-    <div class="inner">
-      <div class="title">横向きでご覧ください</div>
-      <div class="sub">
-        スマホでは見開き表示にしています。<br>
-        端末を横向きにすると読みやすくなります。
-      </div>
-      <button id="rotateButton">横向き表示を試す</button>
-    </div>
-  </div>
-
   <script>
+    /*
+      GitHub上で以下のように置いてください。
+
+      iro_teityo_1/
+      ├── index.html
+      ├── issue01.pdf
+      └── README.md
+
+      issue01.pdf は index.html と同じ階層です。
+    */
     const PDF_URL = './issue01.pdf';
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -289,27 +270,34 @@
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const zoomResetBtn = document.getElementById('zoomResetBtn');
     const zoomInBtn = document.getElementById('zoomInBtn');
-    const fullscreenBtn = document.getElementById('fullscreenBtn');
-
-    const rotateButton = document.getElementById('rotateButton');
 
     let pdfDoc = null;
     let totalPages = 0;
+
+    /*
+      currentPage は見開きの基準ページです。
+
+      1      → 1ページ目単独、右側に表示
+      2      → 3-2
+      4      → 5-4
+      6      → 7-6
+      ...
+      100    → 100ページ目単独、左側に表示
+    */
     let currentPage = 1;
 
     /*
-      片ページモードは廃止。
-      常に見開き前提。
+      片ページモードは使いません。
+      スマホでもPCでも常に見開きです。
     */
-    const singleMode = false;
+    let zoom = window.innerWidth <= 900 ? 1.04 : 1;
 
-    let zoom = window.innerWidth <= 900 ? 1.08 : 1;
     let rendering = false;
     let rerenderQueued = false;
     let currentRenderTask = null;
 
-    function clamp(n, min, max) {
-      return Math.max(min, Math.min(max, n));
+    function clamp(number, min, max) {
+      return Math.max(min, Math.min(max, number));
     }
 
     function normalizePage(page) {
@@ -320,7 +308,7 @@
       }
 
       /*
-        見開きの基準は偶数ページ
+        2ページ以降は偶数ページを見開きの基準にする。
         2 → 3-2
         4 → 5-4
       */
@@ -334,11 +322,19 @@
 
       if (currentPage + 1 <= totalPages) {
         /*
-          左右の並びを 3-2, 5-4 にする
+          表示順を右開き本に合わせる。
+          左ページ、右ページの順で返す。
+
+          currentPage = 2 → [3, 2]
+          currentPage = 4 → [5, 4]
         */
         return [currentPage + 1, currentPage];
       }
 
+      /*
+        最終ページが単独になる場合。
+        今回は100ページなので、100ページ目は単独で左側。
+      */
       return [currentPage];
     }
 
@@ -346,6 +342,11 @@
       if (totalPages <= 1) {
         return 1;
       }
+
+      /*
+        100ページのような偶数ページ数の場合、最後は100単独。
+        99ページのような奇数ページ数の場合、最後の見開きは99-98。
+      */
       return totalPages % 2 === 0 ? totalPages : totalPages - 1;
     }
 
@@ -358,50 +359,61 @@
         pageInfoEl.textContent = `${pages[0]}-${pages[1]}/${totalPages}`;
       }
 
-      nextBtn.disabled = currentPage >= lastStartPage();
-      prevBtn.disabled = currentPage <= 1;
-      nextZone.disabled = nextBtn.disabled;
-      prevZone.disabled = prevBtn.disabled;
+      const isLast = currentPage >= lastStartPage();
+      const isFirst = currentPage <= 1;
+
+      nextBtn.disabled = isLast;
+      nextZone.disabled = isLast;
+
+      prevBtn.disabled = isFirst;
+      prevZone.disabled = isFirst;
 
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
     }
 
-    function clearPage(el) {
-      el.innerHTML = '';
-      el.classList.add('empty');
-      el.style.width = '0px';
-      el.style.height = '0px';
+    function clearPage(element) {
+      element.innerHTML = '';
+      element.classList.add('empty');
+      element.style.width = '0px';
+      element.style.height = '0px';
     }
 
     function getDeviceScale() {
       const dpr = window.devicePixelRatio || 1;
 
       /*
-        前より少し画質を上げる
-        ただしスマホで落ちにくいよう上限は抑える
+        スマホで落ちにくくしつつ、5MB版PDFでもなるべく読めるようにする。
+        重い場合は 1.6 → 1.4 に下げる。
+        もっと画質が欲しい場合は 1.6 → 1.8 に上げる。
       */
       if (window.innerWidth <= 900) {
-        return Math.min(dpr, 1.8);
+        return Math.min(dpr, 1.6);
       }
 
       return Math.min(dpr, 2);
     }
 
-    async function drawPage(pageNumber, el, maxWidth, maxHeight) {
-      el.innerHTML = '';
-      el.classList.remove('empty');
+    async function drawPage(pageNumber, element, maxWidth, maxHeight) {
+      element.innerHTML = '';
+      element.classList.remove('empty');
 
       const page = await pdfDoc.getPage(pageNumber);
       const baseViewport = page.getViewport({ scale: 1 });
 
+      /*
+        PDF元ページの比率を保ったまま、画面内に最大表示。
+      */
       const fitScale = Math.min(
         maxWidth / baseViewport.width,
         maxHeight / baseViewport.height
       );
 
-      const viewport = page.getViewport({ scale: fitScale * zoom });
+      const viewport = page.getViewport({
+        scale: fitScale * zoom
+      });
 
       const dpr = getDeviceScale();
+
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { alpha: false });
 
@@ -411,13 +423,14 @@
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-      el.style.width = `${Math.floor(viewport.width)}px`;
-      el.style.height = `${Math.floor(viewport.height)}px`;
+      element.style.width = `${Math.floor(viewport.width)}px`;
+      element.style.height = `${Math.floor(viewport.height)}px`;
 
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
 
-      el.appendChild(canvas);
+      element.appendChild(canvas);
 
       const renderTask = page.render({
         canvasContext: context,
@@ -425,6 +438,7 @@
       });
 
       currentRenderTask = renderTask;
+
       await renderTask.promise;
 
       if (currentRenderTask === renderTask) {
@@ -433,7 +447,9 @@
     }
 
     async function render() {
-      if (!pdfDoc) return;
+      if (!pdfDoc) {
+        return;
+      }
 
       if (rendering) {
         rerenderQueued = true;
@@ -447,36 +463,48 @@
       updateUi();
 
       const pages = visiblePages();
-      const vw = viewerEl.clientWidth;
-      const vh = viewerEl.clientHeight;
 
-      const controlSpace = window.innerWidth <= 900 ? 42 : 50;
-      const maxHeight = Math.max(160, vh - controlSpace);
+      const viewerWidth = viewerEl.clientWidth;
+      const viewerHeight = viewerEl.clientHeight;
+
+      /*
+        下の操作バーのぶんだけ少し高さを空ける。
+        ページをなるべく大きく見せたいので、控えめにする。
+      */
+      const controlSpace = window.innerWidth <= 900 ? 38 : 48;
+      const maxHeight = Math.max(160, viewerHeight - controlSpace);
 
       try {
         if (pages.length === 1) {
-          const singlePageWidth = vw / 2;
-
           /*
-            1ページ目は右側
-            最終ページは左側
+            単独ページも、見開き中の1ページと同じ大きさにする。
+            つまり全幅ではなく、画面の半分幅を上限にする。
           */
+          const singlePageWidth = viewerWidth / 2;
+
           if (pages[0] === 1) {
+            /*
+              1ページ目は右側に置く。
+            */
             clearPage(leftPageEl);
             await drawPage(pages[0], rightPageEl, singlePageWidth, maxHeight);
           } else {
+            /*
+              100ページ目など、最後の単独ページは左側に置く。
+            */
             await drawPage(pages[0], leftPageEl, singlePageWidth, maxHeight);
             clearPage(rightPageEl);
           }
         } else {
-          const maxWidth = vw / 2;
-
           /*
-            pages = [3,2] のような順なので
-            左に3、右に2
+            見開き。
+            pages は [3,2], [5,4] のように
+            左ページ、右ページの順。
           */
-          await drawPage(pages[0], leftPageEl, maxWidth, maxHeight);
-          await drawPage(pages[1], rightPageEl, maxWidth, maxHeight);
+          const maxPageWidth = viewerWidth / 2;
+
+          await drawPage(pages[0], leftPageEl, maxPageWidth, maxHeight);
+          await drawPage(pages[1], rightPageEl, maxPageWidth, maxHeight);
         }
 
         statusEl.style.display = 'none';
@@ -494,14 +522,30 @@
     }
 
     function next() {
-      if (currentPage >= lastStartPage()) return;
-      currentPage = currentPage === 1 ? 2 : currentPage + 2;
+      if (currentPage >= lastStartPage()) {
+        return;
+      }
+
+      if (currentPage === 1) {
+        currentPage = 2;
+      } else {
+        currentPage += 2;
+      }
+
       render();
     }
 
     function prev() {
-      if (currentPage <= 1) return;
-      currentPage = currentPage <= 2 ? 1 : currentPage - 2;
+      if (currentPage <= 1) {
+        return;
+      }
+
+      if (currentPage <= 2) {
+        currentPage = 1;
+      } else {
+        currentPage -= 2;
+      }
+
       render();
     }
 
@@ -519,53 +563,65 @@
         `${String(error.message || error)}`;
     }
 
-    async function enterFullscreenAndLandscape() {
-      try {
-        if (!document.fullscreenElement) {
-          await document.documentElement.requestFullscreen?.();
-        }
-      } catch (e) {}
-
-      try {
-        if (screen.orientation && screen.orientation.lock) {
-          await screen.orientation.lock('landscape');
-        }
-      } catch (e) {}
-    }
-
     nextBtn.addEventListener('click', next);
     nextZone.addEventListener('click', next);
 
     prevBtn.addEventListener('click', prev);
     prevZone.addEventListener('click', prev);
 
-    zoomOutBtn.addEventListener('click', () => setZoom(zoom - 0.1));
-    zoomInBtn.addEventListener('click', () => setZoom(zoom + 0.1));
-    zoomResetBtn.addEventListener('click', () => setZoom(window.innerWidth <= 900 ? 1.08 : 1));
-
-    fullscreenBtn.addEventListener('click', enterFullscreenAndLandscape);
-    rotateButton.addEventListener('click', enterFullscreenAndLandscape);
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft') next();
-      if (e.key === 'ArrowRight') prev();
+    zoomOutBtn.addEventListener('click', () => {
+      setZoom(zoom - 0.1);
     });
 
-    let startX = 0;
-    let startY = 0;
+    zoomInBtn.addEventListener('click', () => {
+      setZoom(zoom + 0.1);
+    });
 
-    window.addEventListener('touchstart', (e) => {
-      startX = e.changedTouches[0].clientX;
-      startY = e.changedTouches[0].clientY;
+    zoomResetBtn.addEventListener('click', () => {
+      zoom = window.innerWidth <= 900 ? 1.04 : 1;
+      render();
+    });
+
+    /*
+      キーボード操作：
+      日本語の右開き本なので、← で次へ、→ で前へ。
+    */
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowLeft') {
+        next();
+      }
+
+      if (event.key === 'ArrowRight') {
+        prev();
+      }
+    });
+
+    /*
+      スマホ操作：
+      左へスワイプ = 次へ
+      右へスワイプ = 前へ
+    */
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    window.addEventListener('touchstart', (event) => {
+      touchStartX = event.changedTouches[0].clientX;
+      touchStartY = event.changedTouches[0].clientY;
     }, { passive: true });
 
-    window.addEventListener('touchend', (e) => {
-      const dx = e.changedTouches[0].clientX - startX;
-      const dy = e.changedTouches[0].clientY - startY;
+    window.addEventListener('touchend', (event) => {
+      const diffX = event.changedTouches[0].clientX - touchStartX;
+      const diffY = event.changedTouches[0].clientY - touchStartY;
 
-      if (Math.abs(dx) < 45 || Math.abs(dy) > 90) return;
+      if (Math.abs(diffX) < 45) {
+        return;
+      }
 
-      if (dx < 0) {
+      if (Math.abs(diffY) > 90) {
+        return;
+      }
+
+      if (diffX < 0) {
         next();
       } else {
         prev();
@@ -576,9 +632,10 @@
 
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
+
       resizeTimer = setTimeout(() => {
         render();
-      }, 160);
+      }, 150);
     });
 
     async function init() {
@@ -595,15 +652,6 @@
         currentPage = 1;
 
         render();
-
-        /*
-          対応ブラウザでは横向きロックを試す
-        */
-        if (window.innerWidth <= 900) {
-          setTimeout(() => {
-            enterFullscreenAndLandscape();
-          }, 300);
-        }
       } catch (error) {
         showError(error);
       }
