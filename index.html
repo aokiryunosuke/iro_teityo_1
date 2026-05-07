@@ -183,10 +183,14 @@
       display: flex;
     }
 
+    /*
+      左側が100、右側が1になるようにする。
+    */
     #pageSlider {
       flex: 1;
       min-width: 120px;
       accent-color: #fff;
+      direction: rtl;
     }
 
     #pageInput {
@@ -199,28 +203,6 @@
       text-align: center;
       font-size: 14px;
       font-variant-numeric: tabular-nums;
-    }
-
-    #toast {
-      position: fixed;
-      left: 50%;
-      bottom: calc(108px + env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      z-index: 22;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.15);
-      backdrop-filter: blur(12px);
-      color: #fff;
-      font-size: 13px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .16s ease;
-      white-space: nowrap;
-    }
-
-    #toast.show {
-      opacity: 1;
     }
 
     #status {
@@ -274,26 +256,26 @@
         height: 31px;
         font-size: 13px;
       }
-
-      #toast {
-        bottom: calc(100px + env(safe-area-inset-bottom));
-        font-size: 12px;
-      }
     }
 
     @media (max-width: 430px) {
-      #pageInfo { min-width: 58px; }
-      #zoomOutBtn,
-      #zoomInBtn {
-        display: none;
+      #pageInfo {
+        min-width: 58px;
       }
+
       button {
         min-width: 29px;
         height: 29px;
         padding: 0 7px;
+        font-size: 11px;
       }
+
       #controls {
         gap: 3px;
+      }
+
+      #zoomResetBtn {
+        min-width: 42px;
       }
     }
   </style>
@@ -313,28 +295,24 @@
   <div id="jumpPanel">
     <input id="pageSlider" type="range" min="1" max="1" value="1" />
     <input id="pageInput" type="number" min="1" max="1" value="1" inputmode="numeric" />
-    <button id="goPageBtn">移動</button>
   </div>
 
   <div id="controls">
     <button id="nextBtn" aria-label="次へ">←</button>
     <span id="pageInfo">...</span>
     <button id="prevBtn" aria-label="前へ">→</button>
-    <button id="singleBtn" aria-label="単一ページ">1</button>
-    <button id="spreadBtn" aria-label="見開きページ">2</button>
-    <button id="jumpBtn" aria-label="ページ移動">移動</button>
-    <button id="bookmarkBtn" aria-label="しおり">栞</button>
+    <button id="spreadBtn" aria-label="見開き">開</button>
+    <button id="singleBtn" aria-label="単一ページ">単</button>
+    <button id="jumpBtn" aria-label="ページ移動">移</button>
     <button id="zoomOutBtn" aria-label="縮小">−</button>
     <button id="zoomResetBtn" aria-label="ズームを戻す">100%</button>
     <button id="zoomInBtn" aria-label="拡大">＋</button>
   </div>
 
-  <div id="toast"></div>
   <div id="status">読み込み中...</div>
 
   <script>
     const PDF_URL = './issue01.pdf';
-    const STORAGE_KEY = 'iro_teityo_1_bookmark_v2';
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -354,7 +332,6 @@
     const singleBtn = document.getElementById('singleBtn');
     const spreadBtn = document.getElementById('spreadBtn');
     const jumpBtn = document.getElementById('jumpBtn');
-    const bookmarkBtn = document.getElementById('bookmarkBtn');
 
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const zoomResetBtn = document.getElementById('zoomResetBtn');
@@ -363,13 +340,15 @@
     const jumpPanel = document.getElementById('jumpPanel');
     const pageSlider = document.getElementById('pageSlider');
     const pageInput = document.getElementById('pageInput');
-    const goPageBtn = document.getElementById('goPageBtn');
-
-    const toastEl = document.getElementById('toast');
 
     let pdfDoc = null;
     let totalPages = 0;
     let currentPage = 1;
+
+    /*
+      スマホは初期状態では単ページ。
+      「開」で見開きにできます。
+    */
     let viewMode = window.innerWidth <= 820 ? 'single' : 'spread';
 
     let zoom = 1;
@@ -378,19 +357,9 @@
 
     let rendering = false;
     let rerenderQueued = false;
-    let toastTimer = null;
 
     function clamp(number, min, max) {
       return Math.max(min, Math.min(max, number));
-    }
-
-    function showToast(message) {
-      clearTimeout(toastTimer);
-      toastEl.textContent = message;
-      toastEl.classList.add('show');
-      toastTimer = setTimeout(() => {
-        toastEl.classList.remove('show');
-      }, 1400);
     }
 
     function normalizePage(page) {
@@ -417,6 +386,9 @@
       }
 
       if (currentPage + 1 <= totalPages) {
+        /*
+          右開きなので 3-2, 5-4。
+        */
         return [currentPage + 1, currentPage];
       }
 
@@ -497,18 +469,33 @@
       element.style.height = '0px';
     }
 
-    function getRenderScaleLimit() {
-      const dpr = window.devicePixelRatio || 1;
-
+    function getRenderScaleLimit(viewportWidth, viewportHeight) {
       /*
-        スマホ高画質寄り。
-        重くなる場合は 3.4 を 2.8 や 2.6 に下げてください。
+        スマホ見開きの画質を優先。
+        DPRより高い内部解像度で描画するので、見開きでも文字が潰れにくくなります。
+
+        ただし巨大canvasで落ちないように、1ページあたりの最大ピクセル数で制限します。
       */
+      let desiredScale;
+
       if (window.innerWidth <= 900) {
-        return Math.min(dpr, 3.4);
+        desiredScale = viewMode === 'spread' ? 4.6 : 4.0;
+      } else {
+        desiredScale = 3.2;
       }
 
-      return Math.min(dpr, 3.0);
+      const maxPixelsPerPage = window.innerWidth <= 900 ? 9000000 : 12000000;
+      const estimatedPixelsAtDesired =
+        viewportWidth * viewportHeight * desiredScale * desiredScale;
+
+      if (estimatedPixelsAtDesired <= maxPixelsPerPage) {
+        return desiredScale;
+      }
+
+      return Math.max(
+        2.2,
+        Math.sqrt(maxPixelsPerPage / (viewportWidth * viewportHeight))
+      );
     }
 
     async function drawPage(pageNumber, element, maxWidth, maxHeight) {
@@ -524,7 +511,7 @@
       );
 
       const viewport = page.getViewport({ scale: fitScale });
-      const renderScale = getRenderScaleLimit();
+      const renderScale = getRenderScaleLimit(viewport.width, viewport.height);
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d', { alpha: false });
@@ -576,8 +563,7 @@
       try {
         if (viewMode === 'single') {
           /*
-            単一ページは画面いっぱいに近く表示。
-            スマホでは画質と読みやすさを優先。
+            単ページは画面いっぱいに近く表示。
           */
           await drawPage(pages[0], leftPageEl, viewerWidth, maxHeight);
           clearPage(rightPageEl);
@@ -649,46 +635,14 @@
 
     function goToPage(pageNumber) {
       currentPage = normalizePage(Number(pageNumber) || 1);
-      jumpPanel.classList.remove('open');
       render();
     }
 
     function setZoom(value) {
-      zoom = clamp(value, 1, 3.8);
+      zoom = clamp(value, 1, 4.0);
       resetPanIfNeeded();
       updateUi();
       applyTransform();
-    }
-
-    function saveBookmark() {
-      const data = {
-        page: getDisplayStartPage(),
-        mode: viewMode,
-        savedAt: Date.now()
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      showToast(`${data.page}ページに栞をはさみました`);
-    }
-
-    function loadBookmark() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) {
-          showToast('栞はまだありません');
-          return;
-        }
-
-        const data = JSON.parse(raw);
-        if (data.mode === 'single' || data.mode === 'spread') {
-          viewMode = data.mode;
-        }
-
-        currentPage = normalizePage(data.page || 1);
-        showToast(`${data.page}ページへ移動しました`);
-        render();
-      } catch (error) {
-        showToast('栞を読み込めませんでした');
-      }
     }
 
     function showError(error) {
@@ -706,8 +660,8 @@
     prevBtn.addEventListener('click', prev);
     prevZone.addEventListener('click', prev);
 
-    singleBtn.addEventListener('click', () => setViewMode('single'));
     spreadBtn.addEventListener('click', () => setViewMode('spread'));
+    singleBtn.addEventListener('click', () => setViewMode('single'));
 
     jumpBtn.addEventListener('click', () => {
       jumpPanel.classList.toggle('open');
@@ -721,26 +675,15 @@
       goToPage(pageSlider.value);
     });
 
-    pageInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        goToPage(pageInput.value);
-      }
-    });
-
-    goPageBtn.addEventListener('click', () => {
+    pageInput.addEventListener('change', () => {
       goToPage(pageInput.value);
     });
 
-    bookmarkBtn.addEventListener('click', () => {
-      /*
-        普通クリック：栞を保存
-        長押し/右クリックの代わりに、ダブルクリックで栞へ移動
-      */
-      saveBookmark();
-    });
-
-    bookmarkBtn.addEventListener('dblclick', () => {
-      loadBookmark();
+    pageInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        goToPage(pageInput.value);
+        jumpPanel.classList.remove('open');
+      }
     });
 
     zoomOutBtn.addEventListener('click', () => setZoom(zoom - 0.15));
@@ -764,14 +707,6 @@
       if (event.key.toLowerCase() === 'j') {
         jumpPanel.classList.toggle('open');
       }
-
-      if (event.key.toLowerCase() === 'b') {
-        saveBookmark();
-      }
-
-      if (event.key.toLowerCase() === 'g') {
-        loadBookmark();
-      }
     });
 
     /*
@@ -779,8 +714,6 @@
       - 1本指左右スワイプ：ページ移動
       - 拡大中の1本指ドラッグ：位置移動
       - 2本指ピンチ：拡大縮小
-      - 栞ボタン：保存
-      - 栞ボタンをダブルタップ：栞へ移動
     */
     let touchStartX = 0;
     let touchStartY = 0;
@@ -826,7 +759,7 @@
         const distance = getDistance(event.touches[0], event.touches[1]);
 
         if (pinchStartDistance > 0) {
-          zoom = clamp(pinchStartZoom * (distance / pinchStartDistance), 1, 3.8);
+          zoom = clamp(pinchStartZoom * (distance / pinchStartDistance), 1, 4.0);
           resetPanIfNeeded();
           updateUi();
           applyTransform();
