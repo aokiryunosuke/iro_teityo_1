@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <title>いろ・啼鳥 第一号</title>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -87,6 +87,14 @@
       width: 0 !important;
       height: 0 !important;
       background: transparent;
+    }
+
+    /*
+      スマホの見開き中央に出る細い白線対策。
+      canvasの小数px丸めで生まれる1pxの隙間を、右ページを少し重ねて消す。
+    */
+    .page + .page:not(.empty) {
+      margin-left: -1px;
     }
 
     canvas {
@@ -444,7 +452,26 @@
       pageInput.value = start;
     }
 
+    function clampPan() {
+      if (zoom <= 1.01) {
+        panX = 0;
+        panY = 0;
+        return;
+      }
+
+      /*
+        拡大中にページが画面外へ飛びすぎるのを防ぐ。
+        完全な境界計算より、読書ビューではこのくらいのゆるい制限が扱いやすい。
+      */
+      const maxX = viewerEl.clientWidth * (zoom - 1) * 0.65 + 80;
+      const maxY = viewerEl.clientHeight * (zoom - 1) * 0.65 + 80;
+
+      panX = clamp(panX, -maxX, maxX);
+      panY = clamp(panY, -maxY, maxY);
+    }
+
     function applyTransform() {
+      clampPan();
       spreadEl.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
     }
@@ -663,15 +690,44 @@
     spreadBtn.addEventListener('click', () => setViewMode('spread'));
     singleBtn.addEventListener('click', () => setViewMode('single'));
 
-    jumpBtn.addEventListener('click', () => {
+    jumpBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
       jumpPanel.classList.toggle('open');
     });
 
+    /*
+      移動バーは、パネル外を押したら閉じる。
+      パネル内のスライダーや入力欄を触った場合は閉じない。
+    */
+    jumpPanel.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+      if (!jumpPanel.classList.contains('open')) return;
+      if (jumpPanel.contains(event.target)) return;
+      if (jumpBtn.contains(event.target)) return;
+      jumpPanel.classList.remove('open');
+    });
+
+    /*
+      スライダーを動かしている最中にもページを変える。
+      ただし毎フレームPDFを描画するとスマホで重いので、
+      少しだけ間隔をあけて反映します。
+    */
+    let sliderRenderTimer = null;
+
     pageSlider.addEventListener('input', () => {
       pageInput.value = pageSlider.value;
+
+      clearTimeout(sliderRenderTimer);
+      sliderRenderTimer = setTimeout(() => {
+        goToPage(pageSlider.value);
+      }, 120);
     });
 
     pageSlider.addEventListener('change', () => {
+      clearTimeout(sliderRenderTimer);
       goToPage(pageSlider.value);
     });
 
@@ -707,6 +763,10 @@
       if (event.key.toLowerCase() === 'j') {
         jumpPanel.classList.toggle('open');
       }
+
+      if (event.key === 'Escape') {
+        jumpPanel.classList.remove('open');
+      }
     });
 
     /*
@@ -719,6 +779,7 @@
     let touchStartY = 0;
     let touchLastX = 0;
     let touchLastY = 0;
+    let lastTapTime = 0;
 
     let isDragging = false;
     let didDrag = false;
@@ -789,11 +850,29 @@
     window.addEventListener('touchend', (event) => {
       if (event.touches.length > 0) return;
 
-      if (didDrag && zoom > 1.01) return;
-
       const touch = event.changedTouches[0];
       const diffX = touch.clientX - touchStartX;
       const diffY = touch.clientY - touchStartY;
+
+      /*
+        ダブルタップで拡大状態を完全リセット。
+        変な位置まで拡大・移動してしまった時の保険です。
+      */
+      const now = Date.now();
+      if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12) {
+        if (now - lastTapTime < 320) {
+          zoom = 1;
+          panX = 0;
+          panY = 0;
+          updateUi();
+          applyTransform();
+          lastTapTime = 0;
+          return;
+        }
+        lastTapTime = now;
+      }
+
+      if (didDrag && zoom > 1.01) return;
 
       if (Math.abs(diffX) < 45) return;
       if (Math.abs(diffY) > 90) return;
