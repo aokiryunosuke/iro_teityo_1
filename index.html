@@ -877,7 +877,7 @@
       if (Math.abs(diffX) < 45) return;
       if (Math.abs(diffY) > 90) return;
 
-      if (diffX < 0) next();
+      if (diffX > 0) next();
       else prev();
     }, { passive: false });
 
