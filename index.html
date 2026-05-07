@@ -4,643 +4,173 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>いろ・啼鳥 第一号</title>
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
   <style>
-    :root {
-      --bg: #000;
-      --fg: #fff;
-      --muted: rgba(255,255,255,.68);
-      --panel: rgba(0,0,0,.62);
-      --line: rgba(255,255,255,.22);
+    :root { --bg:#000; --fg:#fff; --muted:rgba(255,255,255,.7); --panel:rgba(0,0,0,.62); --line:rgba(255,255,255,.22); }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { margin:0; width:100%; height:100%; background:#000; color:#fff; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","Meiryo",sans-serif; overflow:hidden; overscroll-behavior:none; }
+    body { position:fixed; inset:0; touch-action:none; }
+    #viewer { position:fixed; inset:0; width:100vw; height:100vh; height:100dvh; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    #spread { width:100%; height:100%; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:0; overflow:hidden; }
+    .page { background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden; flex:0 0 auto; box-shadow:none; }
+    .page.empty { width:0!important; height:0!important; background:transparent; }
+    canvas { display:block; width:100%; height:auto; }
+    #controls { position:fixed; left:50%; bottom:calc(7px + env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:20; display:flex; align-items:center; gap:5px; padding:5px; border:1px solid var(--line); border-radius:999px; background:var(--panel); backdrop-filter:blur(12px); max-width:calc(100vw - 12px); }
+    button { appearance:none; border:1px solid var(--line); background:rgba(255,255,255,.08); color:#fff; border-radius:999px; height:34px; min-width:34px; padding:0 10px; font-size:13px; line-height:1; cursor:pointer; }
+    button:disabled { opacity:.25; cursor:default; }
+    button.active { background:rgba(255,255,255,.26); }
+    #pageInfo { min-width:76px; text-align:center; color:var(--muted); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .tap-zone { position:fixed; top:0; bottom:0; z-index:10; width:32vw; border:0; background:transparent; padding:0; opacity:0; }
+    #nextZone { left:0; } #prevZone { right:0; }
+    #status { position:fixed; inset:0; display:grid; place-items:center; padding:24px; color:var(--muted); line-height:1.8; text-align:center; background:#000; z-index:30; }
+    #status.error { color:#ffd1d1; }
+    @media (max-width:820px) {
+      #controls { bottom:calc(6px + env(safe-area-inset-bottom)); gap:4px; padding:4px; }
+      button { height:31px; min-width:31px; padding:0 8px; font-size:12px; }
+      #pageInfo { min-width:62px; font-size:12px; }
+      #spreadModeBtn { display:none; }
     }
-
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    html,
-    body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      background: var(--bg);
-      color: var(--fg);
-      font-family:
-        -apple-system,
-        BlinkMacSystemFont,
-        "Hiragino Sans",
-        "Yu Gothic",
-        "Meiryo",
-        sans-serif;
-      overflow: hidden;
-      overscroll-behavior: none;
-    }
-
-    body {
-      position: fixed;
-      inset: 0;
-      touch-action: none;
-    }
-
-    #viewer {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      height: 100dvh;
-      background: #000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-
-    #spread {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
-      gap: 0;
-      overflow: hidden;
-    }
-
-    .page {
-      background: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-      flex: 0 0 auto;
-      box-shadow: none;
-    }
-
-    .page.empty {
-      width: 0 !important;
-      height: 0 !important;
-      background: transparent;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: auto;
-    }
-
-    #controls {
-      position: fixed;
-      left: 50%;
-      bottom: calc(8px + env(safe-area-inset-bottom));
-      transform: translateX(-50%);
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 5px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: var(--panel);
-      backdrop-filter: blur(12px);
-      color: #fff;
-      max-width: calc(100vw - 12px);
-    }
-
-    button {
-      appearance: none;
-      border: 1px solid var(--line);
-      background: rgba(255,255,255,.08);
-      color: #fff;
-      border-radius: 999px;
-      height: 34px;
-      min-width: 34px;
-      padding: 0 10px;
-      font-size: 13px;
-      line-height: 1;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: .25;
-      cursor: default;
-    }
-
-    button.active {
-      background: rgba(255,255,255,.26);
-    }
-
-    #pageInfo {
-      min-width: 76px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 13px;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-    }
-
-    .tap-zone {
-      position: fixed;
-      top: 0;
-      bottom: 0;
-      z-index: 10;
-      width: 32vw;
-      border: 0;
-      background: transparent;
-      padding: 0;
-      opacity: 0;
-    }
-
-    #nextZone {
-      left: 0;
-    }
-
-    #prevZone {
-      right: 0;
-    }
-
-    #status {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      color: var(--muted);
-      line-height: 1.8;
-      text-align: center;
-      background: #000;
-      z-index: 30;
-    }
-
-    #status.error {
-      color: #ffd1d1;
-    }
-
-    @media (max-width: 820px) {
-      #controls {
-        bottom: calc(6px + env(safe-area-inset-bottom));
-        gap: 4px;
-        padding: 4px;
-      }
-
-      button {
-        height: 31px;
-        min-width: 31px;
-        padding: 0 8px;
-        font-size: 12px;
-      }
-
-      #pageInfo {
-        min-width: 62px;
-        font-size: 12px;
-      }
-
-      /*
-        スマホでは見開きボタンを隠す。
-        重くなりやすいので、基本は1ページ表示。
-      */
-      #spreadModeBtn {
-        display: none;
-      }
-    }
-
-    @media (max-width: 420px) {
-      #zoomOutBtn,
-      #zoomInBtn {
-        display: none;
-      }
-    }
+    @media (max-width:420px) { #zoomOutBtn, #zoomInBtn { display:none; } }
   </style>
 </head>
-
 <body>
-  <div id="viewer" aria-label="PDF viewer">
-    <div id="spread">
-      <div class="page" id="leftPage"></div>
-      <div class="page" id="rightPage"></div>
-    </div>
-  </div>
-
-  <!-- 日本語本なので、左側タップで次へ、右側タップで前へ -->
+  <div id="viewer" aria-label="PDF viewer"><div id="spread"><div class="page" id="leftPage"></div><div class="page" id="rightPage"></div></div></div>
   <button class="tap-zone" id="nextZone" aria-label="次へ"></button>
   <button class="tap-zone" id="prevZone" aria-label="前へ"></button>
-
   <div id="controls">
-    <button id="nextBtn" aria-label="次へ">←</button>
-    <span id="pageInfo">...</span>
-    <button id="prevBtn" aria-label="前へ">→</button>
-    <button id="singleBtn">1</button>
-    <button id="spreadModeBtn">2</button>
-    <button id="zoomOutBtn">−</button>
-    <button id="zoomResetBtn">100%</button>
-    <button id="zoomInBtn">＋</button>
+    <button id="nextBtn" aria-label="次へ">←</button><span id="pageInfo">...</span><button id="prevBtn" aria-label="前へ">→</button>
+    <button id="singleBtn">1</button><button id="spreadModeBtn">2</button>
+    <button id="zoomOutBtn">−</button><button id="zoomResetBtn">100%</button><button id="zoomInBtn">＋</button>
   </div>
-
   <div id="status">読み込み中...</div>
-
   <script>
     const PDF_URL = './issue01.pdf';
-
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const statusEl = document.getElementById('status');
     const viewerEl = document.getElementById('viewer');
     const leftPageEl = document.getElementById('leftPage');
     const rightPageEl = document.getElementById('rightPage');
     const pageInfoEl = document.getElementById('pageInfo');
-
     const nextBtn = document.getElementById('nextBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextZone = document.getElementById('nextZone');
     const prevZone = document.getElementById('prevZone');
-
     const singleBtn = document.getElementById('singleBtn');
     const spreadModeBtn = document.getElementById('spreadModeBtn');
-
     const zoomOutBtn = document.getElementById('zoomOutBtn');
     const zoomResetBtn = document.getElementById('zoomResetBtn');
     const zoomInBtn = document.getElementById('zoomInBtn');
 
-    let pdfDoc = null;
-    let totalPages = 0;
-    let currentPage = 1;
-
-    /*
-      スマホでは必ず1ページ表示で開始。
-      これで開けない問題をかなり避けられます。
-    */
+    let pdfDoc = null, totalPages = 0, currentPage = 1;
     let singleMode = window.innerWidth <= 820;
+    let zoom = 1, rendering = false, rerenderQueued = false;
 
-    let zoom = 1;
-    let rendering = false;
-    let rerenderQueued = false;
-
-    let currentRenderTask = null;
-
-    function clamp(n, min, max) {
-      return Math.max(min, Math.min(max, n));
-    }
-
-    function normalizePage(page) {
+    function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+    function normalizePage(page){
       page = clamp(page, 1, totalPages);
-
-      if (singleMode) {
-        return page;
-      }
-
-      if (page === 1) {
-        return 1;
-      }
-
-      /*
-        見開きの基準ページは偶数。
-        2なら 3-2
-        4なら 5-4
-      */
+      if (singleMode || page === 1) return page;
       return page % 2 === 0 ? page : page - 1;
     }
-
-    function visiblePages() {
-      if (singleMode) {
-        return [currentPage];
-      }
-
-      if (currentPage === 1) {
-        return [1];
-      }
-
-      /*
-        ここが重要。
-        表示順を 3-2、5-4 にする。
-        currentPage = 2 → [3, 2]
-        currentPage = 4 → [5, 4]
-      */
-      if (currentPage + 1 <= totalPages) {
-        return [currentPage + 1, currentPage];
-      }
-
-      return [currentPage];
+    function visiblePages(){
+      if (singleMode) return [currentPage];
+      if (currentPage === 1) return [1];
+      return currentPage + 1 <= totalPages ? [currentPage + 1, currentPage] : [currentPage];
     }
-
-    function lastStartPage() {
-      if (singleMode) {
-        return totalPages;
-      }
-
-      if (totalPages <= 1) {
-        return 1;
-      }
-
+    function lastStartPage(){
+      if (singleMode) return totalPages;
+      if (totalPages <= 1) return 1;
       return totalPages % 2 === 0 ? totalPages : totalPages - 1;
     }
-
-    function updateUi() {
+    function updateUi(){
       const pages = visiblePages();
-
-      if (pages.length === 1) {
-        pageInfoEl.textContent = `${pages[0]}/${totalPages}`;
-      } else {
-        /*
-          表示も 3-2、5-4 にする
-        */
-        pageInfoEl.textContent = `${pages[0]}-${pages[1]}/${totalPages}`;
-      }
-
+      pageInfoEl.textContent = pages.length === 1 ? `${pages[0]}/${totalPages}` : `${pages[0]}-${pages[1]}/${totalPages}`;
       nextBtn.disabled = currentPage >= lastStartPage();
       prevBtn.disabled = currentPage <= 1;
-
       nextZone.disabled = nextBtn.disabled;
       prevZone.disabled = prevBtn.disabled;
-
       singleBtn.classList.toggle('active', singleMode);
       spreadModeBtn.classList.toggle('active', !singleMode);
-
       zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
     }
-
-    function clearPage(el) {
-      el.innerHTML = '';
-      el.classList.add('empty');
-      el.style.width = '0px';
-      el.style.height = '0px';
-    }
-
-    function getDeviceScale() {
+    function clearPage(el){ el.innerHTML=''; el.classList.add('empty'); el.style.width='0px'; el.style.height='0px'; }
+    function getDeviceScale(){
       const dpr = window.devicePixelRatio || 1;
-
-      /*
-        スマホで開けない原因になりやすいので、
-        スマホでは描画解像度を強めに制限する。
-      */
-      if (window.innerWidth <= 820) {
-        return Math.min(dpr, 1.25);
-      }
-
-      return Math.min(dpr, 1.8);
+      return window.innerWidth <= 820 ? Math.min(dpr, 1.15) : Math.min(dpr, 1.6);
     }
-
-    async function drawPage(pageNumber, el, maxWidth, maxHeight) {
-      el.innerHTML = '';
-      el.classList.remove('empty');
-
+    async function drawPage(pageNumber, el, maxWidth, maxHeight){
+      el.innerHTML=''; el.classList.remove('empty');
       const page = await pdfDoc.getPage(pageNumber);
-      const baseViewport = page.getViewport({ scale: 1 });
-
-      const fitScale = Math.min(
-        maxWidth / baseViewport.width,
-        maxHeight / baseViewport.height
-      );
-
-      const viewport = page.getViewport({ scale: fitScale * zoom });
-
+      const base = page.getViewport({scale:1});
+      const fit = Math.min(maxWidth / base.width, maxHeight / base.height);
+      const viewport = page.getViewport({scale:fit * zoom});
       const dpr = getDeviceScale();
-
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d', { alpha: false });
-
+      const ctx = canvas.getContext('2d', { alpha:false });
       canvas.width = Math.floor(viewport.width * dpr);
       canvas.height = Math.floor(viewport.height * dpr);
-
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
-
       el.style.width = `${Math.floor(viewport.width)}px`;
       el.style.height = `${Math.floor(viewport.height)}px`;
-
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-
+      ctx.setTransform(dpr,0,0,dpr,0,0);
       el.appendChild(canvas);
-
-      const renderTask = page.render({
-        canvasContext: context,
-        viewport
-      });
-
-      currentRenderTask = renderTask;
-
-      await renderTask.promise;
-
-      if (currentRenderTask === renderTask) {
-        currentRenderTask = null;
-      }
+      await page.render({ canvasContext:ctx, viewport }).promise;
     }
-
-    async function render() {
+    async function render(){
       if (!pdfDoc) return;
-
-      if (rendering) {
-        rerenderQueued = true;
-        return;
-      }
-
-      rendering = true;
-      rerenderQueued = false;
-
+      if (rendering){ rerenderQueued = true; return; }
+      rendering = true; rerenderQueued = false;
       currentPage = normalizePage(currentPage);
       updateUi();
-
       const pages = visiblePages();
-
       const vw = viewerEl.clientWidth;
       const vh = viewerEl.clientHeight;
-
-      /*
-        下の操作バーぶんだけ少し空ける。
-        スマホはなるべくページを大きく。
-      */
       const controlSpace = window.innerWidth <= 820 ? 38 : 48;
       const maxHeight = Math.max(160, vh - controlSpace);
-
       try {
-        /*
-          単独ページ表示。
-          ただしPC見開きモードの1ページ目・最終ページは、
-          他のページ1枚分と同じ幅にする。
-        */
         if (pages.length === 1) {
-          if (singleMode) {
-            await drawPage(pages[0], leftPageEl, vw, maxHeight);
-            clearPage(rightPageEl);
-          } else {
-            const singlePageWidth = vw / 2;
-
-            /*
-              1ページ目は右側に置く。
-              最終ページは左側に置く。
-            */
-            if (pages[0] === 1) {
-              clearPage(leftPageEl);
-              await drawPage(pages[0], rightPageEl, singlePageWidth, maxHeight);
-            } else {
-              await drawPage(pages[0], leftPageEl, singlePageWidth, maxHeight);
-              clearPage(rightPageEl);
-            }
+          if (singleMode) { await drawPage(pages[0], leftPageEl, vw, maxHeight); clearPage(rightPageEl); }
+          else {
+            const w = vw / 2;
+            if (pages[0] === 1) { clearPage(leftPageEl); await drawPage(pages[0], rightPageEl, w, maxHeight); }
+            else { await drawPage(pages[0], leftPageEl, w, maxHeight); clearPage(rightPageEl); }
           }
+        } else {
+          const w = vw / 2;
+          await drawPage(pages[0], leftPageEl, w, maxHeight);
+          await drawPage(pages[1], rightPageEl, w, maxHeight);
         }
-
-        /*
-          見開き表示。
-          pages は [3,2]、[5,4] の順番。
-          そのまま左、右に描画する。
-        */
-        else {
-          const maxWidth = vw / 2;
-
-          await drawPage(pages[0], leftPageEl, maxWidth, maxHeight);
-          await drawPage(pages[1], rightPageEl, maxWidth, maxHeight);
-        }
-
         statusEl.style.display = 'none';
-      } catch (error) {
-        if (String(error?.name) !== 'RenderingCancelledException') {
-          showError(error);
-        }
-      }
-
+      } catch (error) { showError(error); }
       rendering = false;
-
-      if (rerenderQueued) {
-        render();
-      }
+      if (rerenderQueued) render();
     }
+    function next(){ if (currentPage >= lastStartPage()) return; currentPage = singleMode ? currentPage + 1 : (currentPage === 1 ? 2 : currentPage + 2); render(); }
+    function prev(){ if (currentPage <= 1) return; currentPage = singleMode ? currentPage - 1 : (currentPage <= 2 ? 1 : currentPage - 2); render(); }
+    function setSingleMode(){ singleMode = true; currentPage = normalizePage(currentPage); render(); }
+    function setSpreadMode(){ singleMode = false; currentPage = normalizePage(currentPage); render(); }
+    function setZoom(value){ zoom = clamp(value, .6, 2.2); render(); }
+    function showError(error){ statusEl.style.display='grid'; statusEl.className='error'; statusEl.innerHTML=`PDFを読み込めませんでした。<br>index.html と同じ場所に issue01.pdf があるか確認してください。<br><br>${String(error.message || error)}`; }
 
-    function next() {
-      if (currentPage >= lastStartPage()) return;
-
-      if (singleMode) {
-        currentPage += 1;
-      } else {
-        currentPage = currentPage === 1 ? 2 : currentPage + 2;
-      }
-
-      render();
-    }
-
-    function prev() {
-      if (currentPage <= 1) return;
-
-      if (singleMode) {
-        currentPage -= 1;
-      } else {
-        currentPage = currentPage <= 2 ? 1 : currentPage - 2;
-      }
-
-      render();
-    }
-
-    function setSingleMode() {
-      singleMode = true;
-      currentPage = normalizePage(currentPage);
-      render();
-    }
-
-    function setSpreadMode() {
-      /*
-        スマホでも無理やり見開きにしたい場合は使える。
-        ただし小さい画面では1ページ推奨。
-      */
-      singleMode = false;
-      currentPage = normalizePage(currentPage);
-      render();
-    }
-
-    function setZoom(value) {
-      zoom = clamp(value, 0.6, 2.3);
-      render();
-    }
-
-    function showError(error) {
-      statusEl.style.display = 'grid';
-      statusEl.className = 'error';
-      statusEl.innerHTML =
-        `PDFを読み込めませんでした。<br>` +
-        `index.html と同じ場所に issue01.pdf があるか確認してください。<br><br>` +
-        `${String(error.message || error)}`;
-    }
-
-    nextBtn.addEventListener('click', next);
-    nextZone.addEventListener('click', next);
-
-    prevBtn.addEventListener('click', prev);
-    prevZone.addEventListener('click', prev);
-
-    singleBtn.addEventListener('click', setSingleMode);
-    spreadModeBtn.addEventListener('click', setSpreadMode);
-
-    zoomOutBtn.addEventListener('click', () => setZoom(zoom - 0.1));
-    zoomInBtn.addEventListener('click', () => setZoom(zoom + 0.1));
-    zoomResetBtn.addEventListener('click', () => setZoom(1));
-
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowLeft') next();
-      if (e.key === 'ArrowRight') prev();
-    });
-
-    let startX = 0;
-    let startY = 0;
-
-    window.addEventListener('touchstart', (e) => {
-      startX = e.changedTouches[0].clientX;
-      startY = e.changedTouches[0].clientY;
-    }, { passive: true });
-
-    window.addEventListener('touchend', (e) => {
-      const dx = e.changedTouches[0].clientX - startX;
-      const dy = e.changedTouches[0].clientY - startY;
-
-      if (Math.abs(dx) < 45 || Math.abs(dy) > 90) return;
-
-      /*
-        左へスワイプ = 次へ
-        右へスワイプ = 前へ
-      */
-      if (dx < 0) {
-        next();
-      } else {
-        prev();
-      }
-    }, { passive: true });
-
-    let resizeTimer = null;
-
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-
-      resizeTimer = setTimeout(() => {
-        if (window.innerWidth <= 820) {
-          singleMode = true;
-        }
-
-        render();
-      }, 160);
-    });
-
-    async function init() {
+    nextBtn.addEventListener('click', next); nextZone.addEventListener('click', next);
+    prevBtn.addEventListener('click', prev); prevZone.addEventListener('click', prev);
+    singleBtn.addEventListener('click', setSingleMode); spreadModeBtn.addEventListener('click', setSpreadMode);
+    zoomOutBtn.addEventListener('click', () => setZoom(zoom - .1)); zoomInBtn.addEventListener('click', () => setZoom(zoom + .1)); zoomResetBtn.addEventListener('click', () => setZoom(1));
+    window.addEventListener('keydown', e => { if(e.key==='ArrowLeft') next(); if(e.key==='ArrowRight') prev(); });
+    let startX=0,startY=0;
+    window.addEventListener('touchstart', e => { startX=e.changedTouches[0].clientX; startY=e.changedTouches[0].clientY; }, {passive:true});
+    window.addEventListener('touchend', e => { const dx=e.changedTouches[0].clientX-startX, dy=e.changedTouches[0].clientY-startY; if(Math.abs(dx)<45 || Math.abs(dy)>90) return; dx<0 ? next() : prev(); }, {passive:true});
+    let resizeTimer=null;
+    window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer=setTimeout(() => { if(window.innerWidth<=820) singleMode=true; render(); }, 160); });
+    async function init(){
       try {
-        const loadingTask = pdfjsLib.getDocument({
-          url: PDF_URL,
-
-          /*
-            スマホで少しでも読み込みやすくする設定
-          */
-          disableAutoFetch: false,
-          disableStream: false,
-          disableRange: false
-        });
-
-        pdfDoc = await loadingTask.promise;
+        pdfDoc = await pdfjsLib.getDocument({ url: PDF_URL, disableAutoFetch:false, disableStream:false, disableRange:false }).promise;
         totalPages = pdfDoc.numPages;
         currentPage = 1;
-
         render();
-      } catch (error) {
-        showError(error);
-      }
+      } catch(error) { showError(error); }
     }
-
     init();
   </script>
 </body>
